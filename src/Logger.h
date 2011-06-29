@@ -44,6 +44,9 @@ namespace NVDSim
 	void ftlQueueLength(uint64_t length);
 	void ctrlQueueLength(std::vector<uint64_t> length);
 
+	void ftlQueueReset();
+	void ctrlQueueReset();
+
 	//Accessor for power data
 	//Writing correct object oriented code up in this piece, what now?
 	virtual std::vector<std::vector<double>> getEnergyData(void);
@@ -54,8 +57,8 @@ namespace NVDSim
 	virtual void update();
 	
 	void access_start(uint64_t addr);
-	virtual void access_process(uint64_t addr, uint package, ChannelPacketType op);
-	virtual void access_stop(uint64_t addr, uint64_t paddr);
+	virtual void access_process(uint64_t addr, uint64_t paddr, uint package, ChannelPacketType op);
+	virtual void access_stop(uint64_t paddr);
 
 	virtual void save_epoch(uint64_t cycle, uint epoch);
 	
@@ -82,6 +85,9 @@ namespace NVDSim
 	uint64_t ftl_queue_length;
 	std::vector<uint64_t> ctrl_queue_length;
 
+	uint64_t max_ftl_queue_length;
+	std::vector<uint64_t> max_ctrl_queue_length;
+
 	std::unordered_map<uint64_t, uint64_t> writes_per_address;
 
 	// Power Stuff
@@ -96,6 +102,7 @@ namespace NVDSim
 		uint64_t start; // Starting cycle of access
 		uint64_t process; // Cycle when processing starts
 		uint64_t stop; // Stopping cycle of access
+		uint64_t addr; // Virtual address of access
 		uint64_t package; // package for the power calculations
 		ChannelPacketType op; // what operation is this?
 		AccessMapEntry()
@@ -103,6 +110,7 @@ namespace NVDSim
 			start = 0;
 			process = 0;
 			stop = 0;
+			addr = 0;
 			package = 0;
 			op = READ;
 		}

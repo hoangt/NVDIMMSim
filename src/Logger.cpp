@@ -25,6 +25,9 @@ Logger::Logger()
 	ftl_queue_length = 0;
 	ctrl_queue_length = vector<uint64_t>(NUM_PACKAGES, 0);
 
+	max_ftl_queue_length = 0;
+	max_ctrl_queue_length = vector<uint64_t>(NUM_PACKAGES, 0);
+
 	idle_energy = vector<double>(NUM_PACKAGES, 0.0); 
 	access_energy = vector<double>(NUM_PACKAGES, 0.0); 
 }
@@ -47,7 +50,7 @@ void Logger::access_start(uint64_t addr)
 }
 
 // Using virtual addresses here right now
-void Logger::access_process(uint64_t addr, uint package, ChannelPacketType op)
+void Logger::access_process(uint64_t addr, uint64_t paddr, uint package, ChannelPacketType op)
 {
         // Get entry off of the access_queue.
 	uint64_t start_cycle = 0;
@@ -73,9 +76,9 @@ void Logger::access_process(uint64_t addr, uint package, ChannelPacketType op)
 		abort();
 	}
 
-	if (access_map.count(addr) != 0)
+	if (access_map.count(paddr) != 0)
 	{
-		cerr << "ERROR: NVLogger.access_process() called with address already in access_map. address=0x" << hex << addr << "\n" << dec;
+		cerr << "ERROR: NVLogger.access_process() called with address already in access_map. address=0x" << hex << paddr << "\n" << dec;
 		abort();
 	}
 
@@ -83,23 +86,24 @@ void Logger::access_process(uint64_t addr, uint package, ChannelPacketType op)
 	a.start = start_cycle;
 	a.op = op;
 	a.process = this->currentClockCycle;
+	a.addr = addr;
 	a.package = package;
-	access_map[addr] = a;
+	access_map[paddr] = a;
 	
 	this->queue_latency(a.process - a.start);
 }
 
-void Logger::access_stop(uint64_t addr, uint64_t paddr)
+void Logger::access_stop(uint64_t paddr)
 {
-	if (access_map.count(addr) == 0)
+	if (access_map.count(paddr) == 0)
 	{
-		cerr << "ERROR: NVLogger.access_stop() called with address not in access_map. address=" << hex << addr << "\n" << dec;
+		cerr << "ERROR: NVLogger.access_stop() called with address not in access_map. address=" << hex << paddr << "\n" << dec;
 		abort();
 	}
 
-	AccessMapEntry a = access_map[addr];
+	AccessMapEntry a = access_map[paddr];
 	a.stop = this->currentClockCycle;
-	access_map[addr] = a;
+	access_map[paddr] = a;
 
 	// Log cache event type.
 	if (a.op == READ)
@@ -128,7 +132,7 @@ void Logger::access_stop(uint64_t addr, uint64_t paddr)
 	    }
 	}
 		
-	access_map.erase(addr);
+	access_map.erase(paddr);
 }
 
 void Logger::read()
@@ -233,12 +237,40 @@ double Logger::divide(double num, double denom)
 
 void Logger::ftlQueueLength(uint64_t length)
 {
-    ftl_queue_length = length;
+    if(length > ftl_queue_length){
+	ftl_queue_length = length;
+    }
+    if(length > max_ftl_queue_length){
+	max_ftl_queue_length = length;
+    }
 }
 
 void Logger::ctrlQueueLength(vector<uint64_t> length)
 {
-    ctrl_queue_length = length;
+    for(int i = 0; i < length.size(); i++)
+    {
+	if(length[i] > ctrl_queue_length[i])
+	{
+	    ctrl_queue_length[i] = length[i];
+	}
+	if(length[i] > max_ctrl_queue_length[i])
+	{
+	    max_ctrl_queue_length[i] = length[i];
+	}
+    }
+}
+
+void Logger::ftlQueueReset()
+{
+    ftl_queue_length = 0;
+}
+
+void Logger::ctrlQueueReset()
+{
+    for(int i = 0; i < ctrl_queue_length.size(); i++)
+    {
+	ctrl_queue_length[i] = 0;
+    }
 }
 
 void Logger::save(uint64_t cycle, uint epoch) 
@@ -318,10 +350,10 @@ void Logger::save(uint64_t cycle, uint epoch)
 
 	savefile<<"\nQueue Length Data: \n";
 	savefile<<"========================\n";
-	savefile<<"Length of Ftl Queue: " <<ftl_queue_length<<"\n";
-	for(uint i = 0; i < ctrl_queue_length.size(); i++)
+	savefile<<"Maximum Length of Ftl Queue: " <<max_ftl_queue_length<<"\n";
+	for(uint i = 0; i < max_ctrl_queue_length.size(); i++)
 	{
-	    savefile<<"Length of Controller Queue for Package " << i << ": "<<ctrl_queue_length[i]<<"\n";
+	    savefile<<"Maximum Length of Controller Queue for Package " << i << ": "<<max_ctrl_queue_length[i]<<"\n";
 	}
 
 	if(WEAR_LEVEL_LOG)

@@ -19,7 +19,8 @@ Die::Die(NVDIMM *parent, Logger *l, uint idNum){
 	currentCommands= vector<ChannelPacket *>(PLANES_PER_DIE, NULL);
 
 	dataCyclesLeft= 0;
-	controlCyclesLeft= vector<uint>(PLANES_PER_DIE, 0);
+	deviceBeatsLeft= 0;
+	controlCyclesLeft= new uint[PLANES_PER_DIE];
 
 	currentClockCycle= 0;
 }
@@ -37,26 +38,26 @@ void Die::receiveFromChannel(ChannelPacket *busPacket){
 			 case READ:
 			     if(DEVICE_TYPE.compare("PCM") == 0)
 			     {
-				 controlCyclesLeft[busPacket->plane]= READ_TIME * (NV_PAGE_SIZE / 8);
+				 controlCyclesLeft[busPacket->plane]= READ_TIME * ((NV_PAGE_SIZE*8192) / 8);			
 			     }
 			     else
 			     {
 				 controlCyclesLeft[busPacket->plane]= READ_TIME;
 			     }
 			     //update the logger
-			     log->access_process(busPacket->virtualAddress, busPacket->package, READ);
+			     log->access_process(busPacket->virtualAddress, busPacket->physicalAddress, busPacket->package, READ);
 			     break;
 			 case GC_READ:
 			     if(DEVICE_TYPE.compare("PCM") == 0)
 			     {
-				 controlCyclesLeft[busPacket->plane]= READ_TIME * (NV_PAGE_SIZE / 8);
+				 controlCyclesLeft[busPacket->plane]= READ_TIME * ((NV_PAGE_SIZE*8192) / 8);
 			     }
 			     else
 			     {
 				 controlCyclesLeft[busPacket->plane]= READ_TIME;
 			     }
 			     //update the logger
-			     log->access_process(busPacket->virtualAddress, busPacket->package, GC_READ);
+			     log->access_process(busPacket->virtualAddress, busPacket->physicalAddress, busPacket->package, GC_READ);
 			     break;
 			 case WRITE:
 			     if(DEVICE_TYPE.compare("PCM") == 0 && GARBAGE_COLLECT == 0)
@@ -68,7 +69,7 @@ void Die::receiveFromChannel(ChannelPacket *busPacket){
 				 controlCyclesLeft[busPacket->plane]= WRITE_TIME;
 			     }
 			     //update the logger
-			     log->access_process(busPacket->virtualAddress, busPacket->package, WRITE);
+			     log->access_process(busPacket->virtualAddress, busPacket->physicalAddress, busPacket->package, WRITE);
 			     break;
 			 case GC_WRITE:
 			     if(DEVICE_TYPE.compare("PCM") == 0 && GARBAGE_COLLECT == 0)
@@ -80,11 +81,8 @@ void Die::receiveFromChannel(ChannelPacket *busPacket){
 				 controlCyclesLeft[busPacket->plane]= WRITE_TIME;
 			     }
 			     //update the logger
-			     log->access_process(busPacket->virtualAddress, busPacket->package, GC_WRITE);
+			     log->access_process(busPacket->virtualAddress, busPacket->physicalAddress, busPacket->package, GC_WRITE);
 			     break;
-		         case FF_WRITE:
-			     controlCyclesLeft[busPacket->plane]= 1;
-		             break;
 			 case ERASE:
 			     if(DEVICE_TYPE.compare("PCM") == 0)
 			     {
@@ -95,7 +93,7 @@ void Die::receiveFromChannel(ChannelPacket *busPacket){
 				 controlCyclesLeft[busPacket->plane]= ERASE_TIME;
 			     }
 			     //update the logger
-			     log->access_process(busPacket->virtualAddress, busPacket->package, ERASE);
+			     log->access_process(busPacket->virtualAddress, busPacket->physicalAddress, busPacket->package, ERASE);
 			     break;
 			 default:
 			     break;
@@ -123,15 +121,15 @@ void Die::update(void){
 		 if (controlCyclesLeft[i] == 0){
 			 switch (currentCommand->busPacketType){
 			         case GC_READ:
-				     log->access_stop(currentCommand->virtualAddress, currentCommand->physicalAddress);
-				 case READ:
+				     log->access_stop(currentCommand->physicalAddress);
+				 case READ:	
 					 planes[currentCommand->plane].read(currentCommand);
 					 returnDataPackets.push(planes[currentCommand->plane].readFromData());
 					 break;
-				 case WRITE:
+				 case WRITE:				     
 					 planes[currentCommand->plane].write(currentCommand);
 					 parentNVDIMM->numWrites++;
-					 log->access_stop(currentCommand->virtualAddress, currentCommand->physicalAddress);
+					 log->access_stop(currentCommand->physicalAddress);
 					 //call write callback
 					 if (parentNVDIMM->WriteDataDone != NULL){
 						 (*parentNVDIMM->WriteDataDone)(parentNVDIMM->systemID, currentCommand->virtualAddress, currentClockCycle);
@@ -140,17 +138,12 @@ void Die::update(void){
 				 case GC_WRITE:
 					 planes[currentCommand->plane].write(currentCommand);
 					 parentNVDIMM->numWrites++;
-					 log->access_stop(currentCommand->virtualAddress, currentCommand->physicalAddress);
+					 log->access_stop(currentCommand->physicalAddress);
 					 break;
-			         case FF_WRITE:
-				         planes[currentCommand->plane].write(currentCommand);
-					 parentNVDIMM->numWrites++;
-					 cout << "isued command to page" << currentCommand->page << "\n";
-				         break;
 				 case ERASE:
 					 planes[currentCommand->plane].erase(currentCommand);
 					 parentNVDIMM->numErases++;
-					 log->access_stop(currentCommand->virtualAddress, currentCommand->physicalAddress);
+					 log->access_stop(currentCommand->physicalAddress);
 					 break;
 				 default:
 					 break;
@@ -165,14 +158,32 @@ void Die::update(void){
 
 	if (!returnDataPackets.empty()){
 		if (channel->hasChannel(DIE, id)){
-			if (dataCyclesLeft == 0){
-				channel->sendToController(returnDataPackets.front());
-				channel->releaseChannel(DIE, id);
-				returnDataPackets.pop();
+			if (dataCyclesLeft <= 0 && deviceBeatsLeft > 0){
+			        deviceBeatsLeft--;
+				channel->sendPiece(DIE, 0, id, returnDataPackets.front()->plane);
+				dataCyclesLeft = divide_params(DEVICE_CYCLE,CYCLE_TIME);
 			}
-			dataCyclesLeft--;
+			if(dataCyclesLeft > 0){
+			    dataCyclesLeft--;
+			}
 		} else
-			if (channel->obtainChannel(id, DIE, NULL))
-				dataCyclesLeft= DATA_TIME;
+		        if (channel->obtainChannel(id, DIE, NULL)){
+			    dataCyclesLeft = divide_params(DEVICE_CYCLE,CYCLE_TIME);
+			    deviceBeatsLeft = divide_params((NV_PAGE_SIZE*8192),DEVICE_WIDTH);
+			}
 	}
+}
+
+void Die::channelDone()
+{
+    channel->sendToController(returnDataPackets.front());
+    channel->releaseChannel(DIE, id);
+    returnDataPackets.pop();
+}
+
+void Die::writeToPlane(ChannelPacket *packet)
+{
+    ChannelPacket *temp = new ChannelPacket(DATA, packet->virtualAddress, packet->physicalAddress, packet->page, packet->block, packet->plane, packet->die, packet->package, NULL);
+    planes[packet->plane].storeInData(temp);
+    planes[packet->plane].write(packet);
 }

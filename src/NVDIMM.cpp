@@ -61,8 +61,10 @@ NVDIMM::NVDIMM(uint id, string deviceFile, string sysFile, string pwd, string tr
 	PRINT("Read time: "<<READ_TIME);
 	PRINT("Write Time: "<<WRITE_TIME);
 	PRINT("Erase time: "<<ERASE_TIME);
-	PRINT("Channel latency for data: "<<DATA_TIME);
-	PRINT("Channel latency for a command: "<<COMMAND_TIME);
+	PRINT("Channel latency for data: "<<CHANNEL_CYCLE);
+	PRINT("Channel width for data: "<<CHANNEL_WIDTH);
+	PRINT("Device latency for data: "<<DEVICE_CYCLE);
+	PRINT("Device width for data: "<<DEVICE_WIDTH)
 	if(USE_EPOCHS == 1)
 	{
 	    PRINT("Device is using epoch data logging");
@@ -202,6 +204,7 @@ void NVDIMM::update(void){
 	
 	for (i= 0; i < packages->size(); i++){
 		package= (*packages)[i];
+		package.channel->update();
 		for (j= 0; j < package.dies.size() ; j++){
 			package.dies[j]->update();
 			package.dies[j]->step();
@@ -219,11 +222,13 @@ void NVDIMM::update(void){
 	//saving stats at the end of each epoch
 	if(USE_EPOCHS)
 	{
+	    ftl->sendQueueLength();
+	    controller->sendQueueLength();
 	    if(epoch_cycles >= EPOCH_TIME)
 	    {
-		ftl->sendQueueLength();
-		controller->sendQueueLength();
 		log->save_epoch(currentClockCycle, epoch_count);
+		log->ftlQueueReset();
+		log->ctrlQueueReset();
 		epoch_count++;
 		epoch_cycles = 0;		
 	    }
@@ -246,6 +251,7 @@ void NVDIMM::saveNVState(string filename){
     ENABLE_NV_SAVE = 1;
     NVDIMM_SAVE_FILE = filename;
     cout << "got to save state in nvdimm \n";
+    cout << "save file was" << NVDIMM_SAVE_FILE << "\n";
     ftl->saveNVState();
 }
 

@@ -11,11 +11,25 @@ Controller::Controller(NVDIMM* parent, Logger* l){
 	log = l;
 
 	channelXferCyclesLeft = vector<uint>(NUM_PACKAGES, 0);
+	channelBeatsLeft = vector<uint>(NUM_PACKAGES, 0);
 
 	channelQueues = vector<queue <ChannelPacket *> >(NUM_PACKAGES, queue<ChannelPacket *>());
-	outgoingPackets = vector<ChannelPacket *>(NUM_PACKAGES, NULL);
+	outgoingPackets = vector<ChannelPacket *>(NUM_PACKAGES, 0);
+	
+	pendingPackets = vector<list <ChannelPacket *> >(NUM_PACKAGES, list<ChannelPacket *>());
 
 	currentClockCycle = 0;
+
+	busyPlanes = new uint **[NUM_PACKAGES];
+	for(uint i = 0; i < NUM_PACKAGES; i++){
+	    busyPlanes[i] = new uint *[DIES_PER_PACKAGE];
+	    for(uint j = 0; j < DIES_PER_PACKAGE; j++){
+		busyPlanes[i][j] = new uint[PLANES_PER_DIE];
+		for(uint k = 0; k < PLANES_PER_DIE; k++){
+		    busyPlanes[i][j][k] = 0;
+		}
+	    }
+	}
 }
 
 void Controller::attachPackages(vector<Package> *packages){
@@ -23,7 +37,6 @@ void Controller::attachPackages(vector<Package> *packages){
 }
 
 void Controller::returnReadData(const FlashTransaction  &trans){
-    log->access_stop(trans.address, trans.address);
 	if(parentNVDIMM->ReturnReadData!=NULL){
 		(*parentNVDIMM->ReturnReadData)(parentNVDIMM->systemID, trans.address, currentClockCycle);
 	}
@@ -88,6 +101,7 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 }
 
 void Controller::receiveFromChannel(ChannelPacket *busPacket){
+        log->access_stop(busPacket->physicalAddress);
 	if (busPacket->busPacketType == READ)
 		returnTransaction.push_back(FlashTransaction(RETURN_DATA, busPacket->virtualAddress, busPacket->data));
 	else
@@ -109,38 +123,51 @@ bool Controller::addPacket(ChannelPacket *p){
 
 void Controller::update(void){
 	uint i;
-	
-	//Check for commands/data on a channel. If there is, see if it is done on channel
-	for (i= 0; i < outgoingPackets.size(); i++){
-		if (outgoingPackets[i] != NULL && (*packages)[outgoingPackets[i]->package].channel->hasChannel(CONTROLLER, 0)){
-
-			channelXferCyclesLeft[i]--;
-			if (channelXferCyclesLeft[i] == 0){
-				(*packages)[outgoingPackets[i]->package].channel->sendToDie(outgoingPackets[i]);
-				(*packages)[outgoingPackets[i]->package].channel->releaseChannel(CONTROLLER, 0);
-				outgoingPackets[i]= NULL;
-			}
-		}
-	}
-	
-	//Look through queues and send oldest packets to the appropriate channel
-	for (i= 0; i < channelQueues.size(); i++){
+		
+        //Look through queues and send oldest packets to the appropriate channel
+	for (i = 0; i < channelQueues.size(); i++){
 		if (!channelQueues[i].empty() && outgoingPackets[i]==NULL){
-			//if we can get the channel (channel contention not implemented yet)
+		    // don't send to busy planes
+		    if(busyPlanes[channelQueues[i].front()->package][channelQueues[i].front()->die][channelQueues[i].front()->plane] != 1){
+		        //if we can get the channel
 			if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, channelQueues[i].front())){
 				outgoingPackets[i]= channelQueues[i].front();
-				channelQueues[i].pop();
+				channelQueues[i].pop();				
 				switch (outgoingPackets[i]->busPacketType){
 					case DATA:
-						channelXferCyclesLeft[i]= DATA_TIME;
+					        channelXferCyclesLeft[i] = divide_params(CHANNEL_CYCLE,CYCLE_TIME); //system cycles per channel beat
+					        channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8192),CHANNEL_WIDTH); //channel pieces per page
 						break;
 					default:
-						channelXferCyclesLeft[i]= COMMAND_TIME;
+					        channelXferCyclesLeft[i] = divide_params(CHANNEL_CYCLE,CYCLE_TIME);
+					        channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
 						break;
 				}
 			}
+		    }
 		}
 	}
+
+	//Check for commands/data on a channel. If there is, see if it is done on channel
+	for (i= 0; i < outgoingPackets.size(); i++){
+		if (outgoingPackets[i] != NULL && (*packages)[outgoingPackets[i]->package].channel->hasChannel(CONTROLLER, 0)){
+		        if (channelBeatsLeft[i] == 0 && (*packages)[outgoingPackets[i]->package].channel->notBusy()){
+				(*packages)[outgoingPackets[i]->package].channel->releaseChannel(CONTROLLER, 0);
+				pendingPackets[i].push_back(outgoingPackets[i]);
+				busyPlanes[outgoingPackets[i]->package][outgoingPackets[i]->die][outgoingPackets[i]->plane] = 1;
+				outgoingPackets[i] = NULL;
+			}
+			if (channelXferCyclesLeft[i] <= 0 && channelBeatsLeft[i] > 0){
+			    (*packages)[outgoingPackets[i]->package].channel->sendPiece(CONTROLLER, outgoingPackets[i]->busPacketType, 
+											    outgoingPackets[i]->die, outgoingPackets[i]->plane);
+			    channelBeatsLeft[i]--;
+			    channelXferCyclesLeft[i] = divide_params(CHANNEL_CYCLE,CYCLE_TIME);
+			}
+			channelXferCyclesLeft[i]--;
+		}
+	}
+	
+
 	//See if any read data is ready to return
 	while (!returnTransaction.empty()){
 		//call return callback
@@ -157,4 +184,25 @@ void Controller::sendQueueLength(void)
 	temp[i] = channelQueues[i].size();
     }
     log->ctrlQueueLength(temp);
+}
+
+void Controller::writeToPackage(ChannelPacket *packet)
+{
+    (*packages)[packet->package].dies[packet->die]->writeToPlane(packet);
+}
+
+void Controller::channelDone(uint die, uint plane)
+{
+    for (uint i = 0; i < pendingPackets.size(); i++){
+	std::list<ChannelPacket *>::iterator it;
+	for(it = pendingPackets[i].begin(); it != pendingPackets[i].end(); it++){
+	    if ((*it) != NULL && (*it)->die == die && (*it)->plane == plane){
+		(*packages)[(*it)->package].channel->sendToDie((*it));
+		(*packages)[(*it)->package].channel->acknowledge(die, plane);
+		busyPlanes[(*it)->package][(*it)->die][(*it)->plane] = 0;
+		pendingPackets[i].erase(it);
+		break;
+	    }
+	}
+    }
 }

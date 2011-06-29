@@ -6,6 +6,7 @@
 #include "FlashConfiguration.h"
 #include "Die.h"
 #include "ChannelPacket.h"
+#include "Util.h"
 
 namespace NVDSim{
 	enum SenderType{
@@ -21,14 +22,30 @@ namespace NVDSim{
 			void attachController(Controller *c);
 			int obtainChannel(uint s, SenderType t, ChannelPacket *p);
 			int releaseChannel(SenderType t, uint s);
-			int hasChannel(SenderType, uint s);
+			int hasChannel(SenderType t, uint s);
 			void sendToDie(ChannelPacket *busPacket);
 			void sendToController(ChannelPacket *busPacket);
+			void sendPiece(SenderType t, uint type, uint die, uint plane);
+			int notBusy(void);
+
+			void acknowledge(uint die, uint plane);
+
+			void update(void);
+			
 			Controller *controller;
 		private:
 			SenderType type;
 			int sender;
+			int busy;
+			int firstCheck;
 			std::vector<Die *> dies;
+
+			uint*** cyclesLeft; //cycles per device or channel beat
+			uint*** beatsLeft; //beats per page
+			uint*** beatsDone; //beats processed
+			uint** deviceWriting;
+			uint** writePending;
+			uint** packetType;
 	};
 }
 #endif

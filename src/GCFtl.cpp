@@ -13,6 +13,11 @@ GCFtl::GCFtl(Controller *c, Logger *l, NVDIMM *p)
     : Ftl(c, l, p)
 {	
         int numBlocks = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * BLOCKS_PER_PLANE;
+
+	used_page_count = 0;
+	gc_status = 0;
+	panic_mode = 0;
+
 	dirty = vector<vector<bool>>(numBlocks, vector<bool>(PAGES_PER_BLOCK, false));
 }
 
@@ -58,7 +63,7 @@ void GCFtl::update(void){
 				case DATA_READ:
 					if (addressMap.find(vAddr) == addressMap.end()){
 						//update the logger
-					        log->access_process(vAddr, 0, READ);
+					        log->access_process(vAddr, vAddr, 0, READ);
 						log->read_unmapped();
 
 						//miss, nothing to read so return garbage
@@ -196,25 +201,6 @@ void GCFtl::update(void){
 							plane = (plane + 1) % PLANES_PER_DIE;
 					}
 					break;
-			        case FF_DATA_WRITE:
-				        if (addressMap.find(vAddr) != addressMap.end()){
-					    pAddr = addressMap[vAddr];
-					    dataPacket = Ftl::translate(DATA, vAddr, pAddr);
-					    commandPacket = Ftl::translate(FF_WRITE, vAddr, pAddr);
-					    controller->addPacket(dataPacket);
-					    //cout << "sent command packet for page" << commandPacket->page << "\n";
-					    //cout << "wait status" << wait << "\n";
-					    //cout << "pAddr was" << pAddr << "\n";
-					    //cout << "vAddr was" << vAddr << "\n";
-					    result = controller->addPacket(commandPacket);
-					    //cout << "result was" << result << "\n";
-					}
-					// fast forwarding used and address maps do not match, we have a problem!
-					else
-					{
-					    ERROR("Attempted Fast Forward Write on location not in uploaded address map");
-					}
-					break;
 				case BLOCK_ERASE:
 				        for (i = 0 ; i < PAGES_PER_BLOCK ; i++){
 						dirty[vAddr / BLOCK_SIZE][i] = false;
@@ -254,6 +240,7 @@ void GCFtl::update(void){
 				// Run the GC.
 				start_erase = parent->numErases;
 				gc_status = 1;
+				cout << "ran the GC \n";
 				runGC();
 			}
 		}
@@ -272,6 +259,8 @@ void GCFtl::update(void){
 		start_erase = parent->numErases;
 		gc_status = 1;
 		panic_mode = 1;
+		cout << (float)(FORCE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE)) << "\n";
+		cout << (float)used_page_count << "\n";
 		for (i = 0 ; i < PLANES_PER_DIE ; i++)
 			runGC();
 	}
@@ -285,7 +274,7 @@ void GCFtl::update(void){
 
 bool GCFtl::checkGC(void){
 	// Return true if more than 70% of blocks are in use and false otherwise.
-  if ((float)used_page_count > ((float)IDLE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE)))
+        if ((float)used_page_count > ((float)IDLE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE)))
 		return true;
 	return false;
 }
@@ -355,8 +344,6 @@ void GCFtl::saveNVState(void)
 {
      if(ENABLE_NV_SAVE)
     {
-	cout << "got here \n";
-	cout << NVDIMM_SAVE_FILE << "\n";
 	ofstream save_file;
 	save_file.open(NVDIMM_SAVE_FILE, ios_base::out | ios_base::trunc);
 	if(!save_file)
@@ -387,14 +374,15 @@ void GCFtl::saveNVState(void)
 	}
 
 	// save the used table
-	save_file << "Used \n";
+	save_file << "Used";
 	for(uint i = 0; i < used.size(); i++)
 	{
-	    for(uint j = 0; j < used[i].size(); j++)
+	    save_file << "\n";
+	    for(uint j = 0; j < used[i].size()-1; j++)
 	    {
 		save_file << used[i][j] << " ";
 	    }
-	    save_file << "\n";
+	    save_file << used[i][used[i].size()];
 	}
 
 	save_file.close();
@@ -435,7 +423,7 @@ void GCFtl::loadNVState(void)
 	    restore_file >> temp;
 
 	    // restore used data
-	    if(doing_used == 1 && row < used.size())
+	    if(doing_used == 1)
 	    {
 		used[row][column] = convert_uint64_t(temp);
 
@@ -444,9 +432,11 @@ void GCFtl::loadNVState(void)
 		{
 		    pAddr = (row * BLOCK_SIZE + column * NV_PAGE_SIZE);
 		    vAddr = tempMap[pAddr];
-		    FlashTransaction trans = FlashTransaction(FF_DATA_WRITE, vAddr, NULL);
-		    addFfTransaction(trans);
-		}
+		    ChannelPacket *tempPacket = Ftl::translate(WRITE, vAddr, pAddr);
+		    controller->writeToPackage(tempPacket);
+
+		    used_page_count++;
+		}		
 
 		column++;
 		if(column >= PAGES_PER_BLOCK)
@@ -476,7 +466,7 @@ void GCFtl::loadNVState(void)
 		    row++;
 		    column = 0;
 		}
-	    }
+		}
 
 	    if(temp.compare("Dirty") == 0)
 	    {
@@ -506,13 +496,6 @@ void GCFtl::loadNVState(void)
 		doing_addresses = 1;
 	    }
 
-	}
-	
-	cout << "temp map was \n";
-	std::unordered_map<uint64_t, uint64_t>::iterator it;
-	for (it = tempMap.begin(); it != tempMap.end(); it++)
-	{
-	    cout << (*it).first << " " << (*it).second << " \n";
 	}
     }
 }

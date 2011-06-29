@@ -10,6 +10,7 @@
 #include "Channel.h"
 #include "FlashTransaction.h"
 #include "Logger.h"
+#include "Util.h"
 
 namespace NVDSim{
 	typedef struct {
@@ -46,6 +47,11 @@ namespace NVDSim{
 
 			void sendQueueLength(void);
 
+			void channelDone(uint die, uint plane);
+
+			// for fast forwarding
+			void writeToPackage(ChannelPacket *packet);
+
 			NVDIMM *parentNVDIMM;
 			Logger *log;
 
@@ -53,8 +59,12 @@ namespace NVDSim{
 			std::list<FlashTransaction> returnTransaction;
 			std::vector<Package> *packages;
 			std::vector<std::queue <ChannelPacket *> > channelQueues;
-			std::vector<ChannelPacket *> outgoingPackets;
-			std::vector<uint> channelXferCyclesLeft;
+			std::vector<ChannelPacket *> outgoingPackets; //there can only ever be one outgoing packet per channel
+			std::vector<std::list <ChannelPacket *> > pendingPackets; //there can be a pending package for each plane of each die of each package
+			std::vector<uint> channelXferCyclesLeft; //cycles per channel beat
+			std::vector<uint> channelBeatsLeft; //channel beats per page
+
+			uint*** busyPlanes;
 	};
 }
 #endif

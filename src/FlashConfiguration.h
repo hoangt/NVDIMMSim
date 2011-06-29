@@ -67,6 +67,7 @@
 // Logging Options
 extern bool WEAR_LEVEL_LOG;
 extern bool RUNTIME_WRITE;
+extern bool PER_PACKAGE;
 
 // Save and Restore Options
 extern bool ENABLE_NV_SAVE;
@@ -82,6 +83,10 @@ extern uint BLOCKS_PER_PLANE;
 extern uint VIRTUAL_BLOCKS_PER_PLANE;
 extern uint PAGES_PER_BLOCK;
 extern uint NV_PAGE_SIZE;
+extern float DEVICE_CYCLE;
+extern float CHANNEL_CYCLE;
+extern uint DEVICE_WIDTH;
+extern uint CHANNEL_WIDTH;
 // does the device use garbage collection 
 extern bool GARBAGE_COLLECT;
 
@@ -106,8 +111,7 @@ extern float PBLOCKS_PER_VBLOCK;
 extern uint READ_TIME;
 extern uint WRITE_TIME;
 extern uint ERASE_TIME;
-extern uint DATA_TIME;
-extern uint COMMAND_TIME;
+extern uint COMMAND_LENGTH; //in bits, including address
 extern uint LOOKUP_TIME;
 // in nanoseconds
 extern float CYCLE_TIME;

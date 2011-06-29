@@ -8,6 +8,7 @@
 #include "ChannelPacket.h"
 #include "Plane.h"
 #include "Logger.h"
+#include "Util.h"
 
 namespace NVDSim{
 
@@ -22,16 +23,23 @@ namespace NVDSim{
 			void receiveFromChannel(ChannelPacket *busPacket);
 			int isDieBusy(uint plane);
 			void update(void);
+
+			void channelDone(void);
+
+			// for fast forwarding
+			void writeToPlane(ChannelPacket *packet);
+
 		private:
 			uint id;
 			NVDIMM *parentNVDIMM;
 			Channel *channel;
 			Logger *log;
-			uint dataCyclesLeft;
+			uint dataCyclesLeft; //cycles per device beat
+			uint deviceBeatsLeft; //device beats per page			
 			std::queue<ChannelPacket *> returnDataPackets;
 			std::vector<Plane> planes;
 			std::vector<ChannelPacket *> currentCommands;
-			std::vector<uint> controlCyclesLeft;
+			uint *controlCyclesLeft;
 	};
 }
 #endif

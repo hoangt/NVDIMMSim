@@ -32,10 +32,6 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	
 	transactionQueue = list<FlashTransaction>();
 
-	used_page_count = 0;
-	gc_status = 0;
-	panic_mode = 0;
-
 	controller = c;
 
 	parent = p;
@@ -129,7 +125,7 @@ void Ftl::update(void){
 				case DATA_READ:
 					if (addressMap.find(vAddr) == addressMap.end()){
 					        //update the logger
-					        log->access_process(vAddr, 0, READ);
+					        log->access_process(vAddr, vAddr, 0, READ);
 						log->read_unmapped();
 						
 						//miss, nothing to read so return garbage
@@ -162,7 +158,6 @@ void Ftl::update(void){
 						if (!used[block][page]){
 						        pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
 							used[block][page] = true;
-							used_page_count++;
 							done = true;
 						}
 					  }
@@ -175,7 +170,6 @@ void Ftl::update(void){
 						if (!used[block][page]){
 							pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
 					  		used[block][page] = true;
-							used_page_count++;
 							done = true;		 
 					        }
 					      }
@@ -200,20 +194,6 @@ void Ftl::update(void){
 						die = (die + 1) % DIES_PER_PACKAGE;
 						if (die == 0)
 							plane = (plane + 1) % PLANES_PER_DIE;
-					}
-					break;
-				 case FF_DATA_WRITE:
-				        if (addressMap.find(vAddr) != addressMap.end()){
-					    pAddr = addressMap[vAddr];
-					    dataPacket = Ftl::translate(DATA, vAddr, pAddr);
-					    commandPacket = Ftl::translate(FF_WRITE, vAddr, pAddr);
-					    controller->addPacket(dataPacket);
-					    result = controller->addPacket(commandPacket);
-					}
-					// fast forwarding used and address maps do not match, we have a problem!
-					else
-					{
-					    ERROR("Attempted Fast Forward Write on location not in uploaded address map");
 					}
 					break;
 				case BLOCK_ERASE:
@@ -277,8 +257,6 @@ void Ftl::saveNVState(void)
 {
     if(ENABLE_NV_SAVE)
     {
-	cout << "got here \n";
-	cout << NVDIMM_SAVE_FILE << "\n";
 	ofstream save_file;
 	save_file.open(NVDIMM_SAVE_FILE, ios_base::out | ios_base::trunc);
 	if(!save_file)
@@ -288,6 +266,7 @@ void Ftl::saveNVState(void)
 	}
 	
 	cout << "NVDIMM is saving the used table and address map \n";
+	cout << "save file is" << NVDIMM_SAVE_FILE << "\n";
 
 	// save the address map
 	save_file << "AddressMap \n";
@@ -301,11 +280,12 @@ void Ftl::saveNVState(void)
 	save_file << "Used \n";
 	for(uint i = 0; i < used.size(); i++)
 	{
-	    for(uint j = 0; j < used[i].size(); j++)
+	    save_file << "\n";
+	    for(uint j = 0; j < used[i].size()-1; j++)
 	    {
 		save_file << used[i][j] << " ";
 	    }
-	    save_file << "\n";
+	    save_file << used[i][used[i].size()];
 	}
 
 	save_file.close();
@@ -333,8 +313,7 @@ void Ftl::loadNVState(void)
 	uint column = 0;
 	uint first = 0;
 	uint key = 0;
-	uint64_t pAddr = 0;
-	uint64_t vAddr = 0;
+	uint64_t pAddr, vAddr = 0;
 
 	std::unordered_map<uint64_t,uint64_t> tempMap;
 
@@ -346,7 +325,7 @@ void Ftl::loadNVState(void)
 
 	    // restore used data
 	    // have the row check cause eof sux
-	    if(doing_used == 1 && row < used.size())
+	    if(doing_used == 1)
 	    {
 		used[row][column] = convert_uint64_t(temp);
 
@@ -355,8 +334,8 @@ void Ftl::loadNVState(void)
 		{
 		    pAddr = (row * BLOCK_SIZE + column * NV_PAGE_SIZE);
 		    vAddr = tempMap[pAddr];
-		    FlashTransaction trans = FlashTransaction(FF_DATA_WRITE, vAddr, NULL);
-		    addFfTransaction(trans);
+		    ChannelPacket *tempPacket = Ftl::translate(WRITE, vAddr, pAddr);
+		    controller->writeToPackage(tempPacket);
 		}
 
 		column++;
