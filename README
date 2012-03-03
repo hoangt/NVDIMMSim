@@ -1,19 +1,21 @@
-FlashDIMMSim: a reasonably accurate flash DIMM simulator.
+NVDIMMSim: a reasonably accurate nonvolatile DIMM simulator.
 
 Acknowledgements:
 	General design (anything not flash specific) borrows heavily from DRAMSim Copyright (C) 2008-2009 Elliot Cooper-Balis and Paul Rosenfeld (overall structure is very similar and some code snippets and classes are copy+paste).
 
+	Basic program structure and functions were designed and implemented by Peter Enns (<slunk at umd dot edu>)
+
 Getting started:
-	To run TraceBasedSim.cpp (doesn't actually run traces yet):
+	To run TraceBasedSim.cpp:
 
 		cd src
 		make
-		./FDSim
+		./NVDSim
 
 	To create a shared library:
 
 		cd src
-		make libfdsim.so
+		make lib    // creates libnvdsim.so
 
 Questions?
-	Contact me at <slunk at umd dot edu>
+	Contact me at <pkt3c at umd dot edu>
