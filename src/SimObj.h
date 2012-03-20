@@ -50,6 +50,7 @@ namespace NVDSim
 	public:
 		uint64_t currentClockCycle;
 		
+		SimObj() { currentClockCycle = 0; };
 		void step();
 		virtual void update()=0;
 	};
