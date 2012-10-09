@@ -41,6 +41,12 @@
 #include "Util.h"
 
 namespace NVDSim{
+        enum ChannelType{
+	        ADDR,
+                RESPONSE_DATA,
+		REQUEST_DATA
+	};
+
 	enum SenderType{
 		CONTROLLER,
 		BUFFER
@@ -51,9 +57,10 @@ namespace NVDSim{
 	class Channel{
 		public:
 			Channel(void);
+			Channel(ChannelType c);
 			void attachBuffer(Buffer *b);
 			void attachController(Controller *c);
-			int obtainChannel(uint s, SenderType t, ChannelPacket *p);
+			int obtainChannel(uint s, SenderType t, ChannelType c, ChannelPacket *p);
 			int releaseChannel(SenderType t, uint s);
 			int hasChannel(SenderType t, uint s);		
 			void sendToBuffer(ChannelPacket *busPacket);
@@ -68,6 +75,7 @@ namespace NVDSim{
 			
 			Controller *controller;
 		private:
+			ChannelType cType;
 			SenderType sType;
 			uint packetType;
 			int sender;

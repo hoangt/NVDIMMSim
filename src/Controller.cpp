@@ -334,40 +334,7 @@ void Controller::update(void){
 		    //(CTRL_WRITE_ON_QUEUE_SIZE == false && writeQueues[i][die_pointers[i]].size() >= CTRL_WRITE_QUEUE_LENGTH-1))
 		{
 		    if (!writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
-			//if we can get the channel
-			if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, writeQueues[i][die_pointers[i]].front())){
-			    outgoingPackets[i] = writeQueues[i][die_pointers[i]].front();
-			    if(LOGGING && QUEUE_EVENT_LOG)
-			    {
-				log->log_ctrl_queue_event(true, writeQueues[i][die_pointers[i]].front()->package, &writeQueues[i][die_pointers[i]]);
-			    }
-			    writeQueues[i][die_pointers[i]].pop_front();
-			    parentNVDIMM->queuesNotFull();
-			    
-			    switch (outgoingPackets[i]->busPacketType){
-			    case DATA:
-				// Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
-				// are in 1 KB (1024 * 8).
-				channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8192),CHANNEL_WIDTH); 
-				break;
-			    default:
-				channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
-				break;
-			    }
-			    // managed to place something so we're done with this channel
-			    // advance the die pointer since this die is now busy
-			    die_pointers[i]++;
-			    if (die_pointers[i] >= DIES_PER_PACKAGE)
-			    {
-				die_pointers[i] = 0;
-			    }
-			    done = 1;
-			}
-			// if we can't get the channel for that die, try the next die			
-			else
-			{
-			    done = nextDie(i);
-			}
+			done = beginWriteSend(i);
 		    }
 		    // this queue is empty, move on
 		    else
@@ -430,75 +397,13 @@ void Controller::update(void){
 		    }
 		    else if(!write_queue_handled)
 		    {
-			//if we can get the channel
-			if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, readQueues[i][die_pointers[i]].front())){
-			    outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
-			    if(LOGGING && QUEUE_EVENT_LOG)
-			    {
-				log->log_ctrl_queue_event(false, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
-			    }
-			    readQueues[i][die_pointers[i]].pop_front();
-			    parentNVDIMM->queuesNotFull();
-			    
-			    channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
-			    // managed to place something so we're done with this channel
-			    // advance the die pointer since this die is now busy
-			    die_pointers[i]++;
-			    if (die_pointers[i] >= DIES_PER_PACKAGE)
-			    {
-				die_pointers[i] = 0;
-			    }
-			    done = 1;
-			}
-			// couldn't get the channel so go to the next die
-			else
-			{
-			    done = nextDie(i);
-			}
+			done = beginReadSend(i);
 		    }
 		}
 		// if there are no reads to send see if we're allowed to send a write instead
 		else if (CTRL_IDLE_WRITE == true && !writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
 		    //if we can get the channel
-		    if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, writeQueues[i][die_pointers[i]].front())){
-			outgoingPackets[i] = writeQueues[i][die_pointers[i]].front();
-			if(LOGGING && QUEUE_EVENT_LOG)
-			{
-			    log->log_ctrl_queue_event(true, writeQueues[i][die_pointers[i]].front()->package, &writeQueues[i][die_pointers[i]]);
-			}
-			writeQueues[i][die_pointers[i]].pop_front();
-			// successfully issued the write so increment the die pointer
-			die_pointers[i]++;
-			if (die_pointers[i] >= DIES_PER_PACKAGE)
-			{
-			    die_pointers[i] = 0;
-			}
-			parentNVDIMM->queuesNotFull();
-			
-			switch (outgoingPackets[i]->busPacketType){
-			case DATA:
-			    // Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
-			    // are in 1 KB (1024 * 8).
-			    channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8192),CHANNEL_WIDTH); 
-			    break;
-			default:
-			    channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
-			    break;
-			}
-			// managed to place something so we're done with this channel
-			// advance the die pointer since this die is now busy
-			die_pointers[i]++;
-			if (die_pointers[i] >= DIES_PER_PACKAGE)
-			{
-			    die_pointers[i] = 0;
-			}
-			done = 1;
-		    }
-		    // couldn't get the channel so go to the next die
-		    else
-		    {
-			done = nextDie(i);
-		    }
+		    done = beginWriteSend(i);
 		}
 		// queue was empty, move on
 		else
@@ -521,7 +426,7 @@ void Controller::update(void){
 	    {
 		if (!readQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
 		    //if we can get the channel
-		    if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, readQueues[i][die_pointers[i]].front())){
+		    if (getChannel(i, readQueues[i][die_pointers[i]].front()->busPacketType){
 			outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
 			if(LOGGING && QUEUE_EVENT_LOG)
 			{
@@ -585,72 +490,52 @@ void Controller::update(void){
 	for (i= 0; i < outgoingPackets.size(); i++){
 	    if (outgoingPackets[i] != NULL){
 		if(paused[outgoingPackets[i]->package] == true && 
-		   !(*packages)[outgoingPackets[i]->package].channel->isBufferFull(CONTROLLER, outgoingPackets[i]->busPacketType, 
-										   outgoingPackets[i]->die))
+		   !checkBuffer(i))
 		{
-		    if ((*packages)[outgoingPackets[i]->package].channel->obtainChannel(0, CONTROLLER, outgoingPackets[i])){
+		    if (getChannel(i)){
 			paused[outgoingPackets[i]->package] = false;
 		    }
 		}
-		if ((*packages)[outgoingPackets[i]->package].channel->hasChannel(CONTROLLER, 0) && paused[outgoingPackets[i]->package] == false){
+		if (checkChannel(i) && paused[outgoingPackets[i]->package] == false){
 		    if (channelBeatsLeft[i] == 0){
-			(*packages)[outgoingPackets[i]->package].channel->releaseChannel(CONTROLLER, 0);
+			releaseChannel(i);
 			pendingPackets[i].push_back(outgoingPackets[i]);
 			outgoingPackets[i] = NULL;
-		    }else if ((*packages)[outgoingPackets[i]->package].channel->notBusy()){
+		    }else if (checkBusy(i)){
 			    if(CUT_THROUGH)
 			    {
-				    if(!(*packages)[outgoingPackets[i]->package].channel->isBufferFull(CONTROLLER, outgoingPackets[i]->busPacketType, 
-												       outgoingPackets[i]->die))
+				if(!checkBuffer(i))
 				    {
-					    (*packages)[outgoingPackets[i]->package].channel->sendPiece(CONTROLLER, outgoingPackets[i]->busPacketType, 
-													outgoingPackets[i]->die, outgoingPackets[i]->plane);
-					    channelBeatsLeft[i]--;
+					sendPiece(i);
+					channelBeatsLeft[i]--;
 				    }
 				    else
 				    {
-					    (*packages)[outgoingPackets[i]->package].channel->releaseChannel(CONTROLLER, 0);
+					releaseChannel(i);
 					    paused[outgoingPackets[i]->package] = true;
 				    }
 			    }
 			    else
 			    {
-				    if(outgoingPackets[i]->busPacketType == DATA && channelBeatsLeft[i] == divide_params((NV_PAGE_SIZE*8192),CHANNEL_WIDTH))
+				if((outgoingPackets[i]->busPacketType == DATA && channelBeatsLeft[i] == divide_params((NV_PAGE_SIZE*8192),CHANNEL_WIDTH)) ||
+				   (outgoingPackets[i]->busPacketType != DATA && channelBeatsLeft[i] == divide_params(COMMAND_LENGTH,CHANNEL_WIDTH)))
+				{
+				    if(!checkBuffer(i))
 				    {
-					    if(!(*packages)[outgoingPackets[i]->package].channel->isBufferFull(CONTROLLER, outgoingPackets[i]->busPacketType, 
-												       outgoingPackets[i]->die))
-					    {
-						    (*packages)[outgoingPackets[i]->package].channel->sendPiece(CONTROLLER, outgoingPackets[i]->busPacketType, 
-														outgoingPackets[i]->die, outgoingPackets[i]->plane);
-						    channelBeatsLeft[i]--;
-					    }
-					    else
-					    {
-						    (*packages)[outgoingPackets[i]->package].channel->releaseChannel(CONTROLLER, 0);
-						    paused[outgoingPackets[i]->package] = true;
-					    }
-				    }
-				    else if(outgoingPackets[i]->busPacketType != DATA && channelBeatsLeft[i] == divide_params(COMMAND_LENGTH,CHANNEL_WIDTH))
-				    {
-					    if(!(*packages)[outgoingPackets[i]->package].channel->isBufferFull(CONTROLLER, outgoingPackets[i]->busPacketType, 
-												       outgoingPackets[i]->die))
-					    {
-						    (*packages)[outgoingPackets[i]->package].channel->sendPiece(CONTROLLER, outgoingPackets[i]->busPacketType, 
-														outgoingPackets[i]->die, outgoingPackets[i]->plane);
-						    channelBeatsLeft[i]--;
-					    }
-					    else
-					    {
-						    (*packages)[outgoingPackets[i]->package].channel->releaseChannel(CONTROLLER, 0);
-						    paused[outgoingPackets[i]->package] = true;
-					    }
+					sendPiece(i);
+					channelBeatsLeft[i]--;
 				    }
 				    else
 				    {
-					    (*packages)[outgoingPackets[i]->package].channel->sendPiece(CONTROLLER, outgoingPackets[i]->busPacketType, 
-													outgoingPackets[i]->die, outgoingPackets[i]->plane);
-					    channelBeatsLeft[i]--;					    
+					releaseChannel(i);
+					paused[outgoingPackets[i]->package] = true;
 				    }
+				}
+				else
+				{
+				    sendPiece(i);
+				    channelBeatsLeft[i]--;					    
+				}
 			    }
 		    }
 		}
@@ -661,6 +546,7 @@ void Controller::update(void){
     else
     {
 	// BUFFERED NOT TRUE CASE...
+	// Cannot support different channels without a buffer so no different channel checks here
 	uint64_t i;
 	//Check for commands/data on a channel. If there is, see if it is done on channel
 	for (i= 0; i < outgoingPackets.size(); i++){
@@ -694,6 +580,267 @@ bool Controller::dataReady(uint64_t package, uint64_t die, uint64_t plane)
 	return 0;
     }
     return 0;
+}
+
+bool Controller::getChannel(unit64_t package, ChannelPacketType type)
+{
+    if( == DATA)
+    {
+	if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, REQUEST_CHANNEL, writeQueues[package][die_pointers[package]].front());
+	}
+	else
+	{
+	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, RESPONSE_CHANNEL, writeQueues[package][die_pointers[package]].front());
+	}
+    }
+    // commands
+    else
+    {
+	if(ENABLE_ADDR_CHANNEL)
+	{
+	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, ADDR, writeQueues[package][die_pointers[package]].front());
+	}
+	else if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, REQUEST_CHANNEL, writeQueues[package][die_pointers[package]].front());
+	}
+	else
+	{
+	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, RESPONSE_CHANNEL, writeQueues[package][die_pointers[package]].front());
+	}
+    }
+    return 0;
+}
+
+bool Controller::beginWriteSend(uint64_t package)
+{
+    if (getChannel(package, writeQueues[package][die_pointers[package]].front()->busPacketType)){
+	outgoingPackets[package] = writeQueues[package][die_pointers[package]].front();
+	if(LOGGING && QUEUE_EVENT_LOG)
+	{
+	    log->log_ctrl_queue_event(true, writeQueues[package][die_pointers[package]].front()->package, &writeQueues[package][die_pointers[package]]);
+	}
+	writeQueues[package][die_pointers[package]].pop_front();
+	parentNVDIMM->queuesNotFull();
+	
+	switch (outgoingPackets[package]->busPacketType){
+	case DATA:
+	    // Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
+	    // are in 1 KB (1024 * 8).
+	    channelBeatsLeft[package] = divide_params((NV_PAGE_SIZE*8192),CHANNEL_WIDTH); 
+	    break;
+	default:
+	    channelBeatsLeft[package] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+	    break;
+	}
+	// managed to place something so we're done with this channel
+	// advance the die pointer since this die is now busy
+	die_pointers[package]++;
+	if (die_pointers[package] >= DIES_PER_PACKAGE)
+	{
+	    die_pointers[package] = 0;
+	}
+	return 1;
+    }
+    // couldn't get the channel so go to the next die
+    else
+    {
+	return nextDie(package);
+    }
+}
+
+bool Controller::beginReadSend(unit64_t package)
+{
+    if (getChannel(package, readQueues[package][die_pointers[package]].front()->busPacketType)){
+	outgoingPackets[package] = readQueues[package][die_pointers[package]].front();
+	if(LOGGING && QUEUE_EVENT_LOG)
+	{
+	    log->log_ctrl_queue_event(false, readQueues[package][die_pointers[package]].front()->package, &readQueues[package][die_pointers[package]]);
+	}
+	readQueues[package][die_pointers[package]].pop_front();
+	parentNVDIMM->queuesNotFull();
+	
+	channelBeatsLeft[package] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+	// managed to place something so we're done with this channel
+	// advance the die pointer since this die is now busy
+	die_pointers[package]++;
+	if (die_pointers[package] >= DIES_PER_PACKAGE)
+	{
+	    die_pointers[package] = 0;
+	}
+	return 1;
+    }
+    // couldn't get the channel so go to the next die
+    else
+    {
+	return nextDie(package);
+    }
+}
+
+bool Controller::checkBuffer(uint64_t packet)
+{
+    if( == DATA)
+    {
+	if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[outgoingPackets[packet]->package].requestChan->isBufferFull(CONTROLLER, outgoingPackets[packet]->busPacketType, outgoingPackets[packet]->die);
+	}
+	else
+	{
+	    return (*packages)[outgoingPackets[packet]->package].channel->isBufferFull(CONTROLLER, outgoingPackets[packet]->busPacketType, outgoingPackets[packet]->die);
+	}
+    }
+    // commands
+    else
+    {
+	if(ENABLE_ADDR_CHANNEL)
+	{
+	     return (*packages)[outgoingPackets[packet]->package].addrChan->isBufferFull(CONTROLLER, outgoingPackets[packet]->busPacketType, outgoingPackets[packet]->die);
+	}
+	else if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[outgoingPackets[packet]->package].requestChan->isBufferFull(CONTROLLER, outgoingPackets[packet]->busPacketType, outgoingPackets[packet]->die);
+	}
+	else
+	{
+	     return (*packages)[outgoingPackets[packet]->package].channel->isBufferFull(CONTROLLER, outgoingPackets[packet]->busPacketType, outgoingPackets[packet]->die);
+	}
+    }
+    return 0;
+}
+
+bool Controller::checkChannel(uint64_t packet)
+{
+    if( == DATA)
+    {
+	if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[outgoingPackets[packet]->package].requestChan->hasChannel(CONTROLLER, 0);
+	}
+	else
+	{
+	    return (*packages)[outgoingPackets[packet]->package].channel->hasChannel(CONTROLLER, 0);
+	}
+    }
+    // commands
+    else
+    {
+	if(ENABLE_ADDR_CHANNEL)
+	{
+	     return (*packages)[outgoingPackets[packet]->package].addrChan->hasChannel(CONTROLLER, 0);
+	}
+	else if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[outgoingPackets[packet]->package].requestChan->hasChannel(CONTROLLER, 0);
+	}
+	else
+	{
+	    return (*packages)[outgoingPackets[packet]->package].channel->hasChannel(CONTROLLER, 0);
+	}
+    }
+    return 0;
+}
+
+bool Controller::checkBusy(uint64_t packet)
+{
+    if( == DATA)
+    {
+	if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[outgoingPackets[packet]->package].requestChan->notBusy();
+	}
+	else
+	{
+	    return (*packages)[outgoingPackets[packet]->package].channel->notBusy();
+	}
+    }
+    // commands
+    else
+    {
+	if(ENABLE_ADDR_CHANNEL)
+	{
+	     return (*packages)[outgoingPackets[packet]->package].addrChan->notBusy();
+	}
+	else if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[outgoingPackets[packet]->package].requestChan->notBusy();
+	}
+	else
+	{
+	    return (*packages)[outgoingPackets[packet]->package].channel->notBusy();
+	}
+    }
+    return 0;
+}
+
+bool Controller::releaseChannel(uint64_t packet)
+{
+    if( == DATA)
+    {
+	if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[outgoingPackets[packet]->package].requestChan->releaseChannel(CONTROLLER, 0);
+	}
+	else
+	{
+	    return (*packages)[outgoingPackets[packet]->package].channel->releaseChannel(CONTROLLER, 0);
+	}
+    }
+    // commands
+    else
+    {
+	if(ENABLE_ADDR_CHANNEL)
+	{
+	     return (*packages)[outgoingPackets[packet]->package].addrChan->releaseChannel(CONTROLLER, 0);
+	}
+	else if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return (*packages)[outgoingPackets[packet]->package].requestChan->releaseChannel(CONTROLLER, 0);
+	}
+	else
+	{
+	    return (*packages)[outgoingPackets[packet]->package].channel->releaseChannel(CONTROLLER, 0);
+	}
+    }
+    return 0;
+}
+
+void Controller::sendPiece(unit64_t packet)
+{
+    if( == DATA)
+    {
+	if(ENABLE_REQUEST_CHANNEL)
+	{
+	    (*packages)[outgoingPackets[packet]->package].requestChan->sendPiece(CONTROLLER, outgoingPackets[packet]->busPacketType, 
+									    outgoingPackets[packet]->die, outgoingPackets[packet]->plane);
+	}
+	else
+	{
+	    (*packages)[outgoingPackets[packet]->package].channel->sendPiece(CONTROLLER, outgoingPackets[packet]->busPacketType, 
+									outgoingPackets[packet]->die, outgoingPackets[packet]->plane);
+	}
+    }
+    // commands
+    else
+    {
+	if(ENABLE_ADDR_CHANNEL)
+	{
+	    (*packages)[outgoingPackets[packet]->package].addrChan->sendPiece(CONTROLLER, outgoingPackets[packet]->busPacketType, 
+									 outgoingPackets[packet]->die, outgoingPackets[packet]->plane);
+	}
+	else if(ENABLE_REQUEST_CHANNEL)
+	{
+	    (*packages)[outgoingPackets[packet]->package].requestChan->sendPiece(CONTROLLER, outgoingPackets[packet]->busPacketType, 
+									    outgoingPackets[packet]->die, outgoingPackets[packet]->plane);
+	}
+	else
+	{
+	    (*packages)[outgoingPackets[packet]->package].channel->sendPiece(CONTROLLER, outgoingPackets[packet]->busPacketType, 
+									outgoingPackets[packet]->die, outgoingPackets[packet]->plane);
+	}
+    }
 }
 
 void Controller::sendQueueLength(void)

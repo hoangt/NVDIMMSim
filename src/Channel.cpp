@@ -41,6 +41,15 @@
 using namespace NVDSim;
 
 Channel::Channel(void){
+        cType = RESPONSE_DATA;
+	sender = -1;
+	busy = 0;
+
+	firstCheck = 0;
+}
+
+Channel::Channel(ChannelType c){
+        cType = c;
 	sender = -1;
 	busy = 0;
 
@@ -55,12 +64,13 @@ void Channel::attachController(Controller *c){
 	controller = c;
 }
 
-int Channel::obtainChannel(uint s, SenderType t, ChannelPacket *p){
+int Channel::obtainChannel(uint s, SenderType t, ChannelType c, ChannelPacket *p){
     if( p ==  NULL && t == CONTROLLER)
     {
 	cout << "something weird happened \n";
     }
     if ((sender != -1) ||
+	(cType != c) || // sanity check: this is the right channel for this packet
 	(t == CONTROLLER && !BUFFERED && (buffer->dies[p->die]->isDieBusy(p->plane) == 1)) ||
 	// should allow us to send write data to a buffer that is currently writing
 	(t == CONTROLLER && !BUFFERED && p->busPacketType != DATA && buffer->dies[p->die]->isDieBusy(p->plane) == 2) ||
@@ -124,7 +134,7 @@ int Channel::notBusy(void){
 void Channel::update(void){
         if(busy == 1){
 	    if(sType == CONTROLLER){
-		bool success = buffer->sendPiece(CONTROLLER, packetType, currentDie, currentPlane);
+		bool success = buffer->sendPiece(CONTROLLER, cType, packetType, currentDie, currentPlane);
 		if(success == false)
 		{
 		    ERROR("Tried to push data into a full buffer");

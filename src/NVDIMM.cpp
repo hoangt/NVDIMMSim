@@ -212,21 +212,79 @@ namespace NVDSim
 	}
 
 	// sanity checks
-	
-
 	for (i= 0; i < NUM_PACKAGES; i++){
-	    Package pack = {new Channel(), new Buffer(i), vector<Die *>()};
-	    //pack.channel= new Channel();
-	    pack.channel->attachController(controller);
-	    pack.channel->attachBuffer(pack.buffer);
-	    pack.buffer->attachChannel(pack.channel);
-	    for (j= 0; j < DIES_PER_PACKAGE; j++){
-		Die *die= new Die(this, log, j);
-		die->attachToBuffer(pack.buffer);
-		pack.buffer->attachDie(die);
-		pack.dies.push_back(die);
+	    if (ENABLE_ADDR_CHANNEL && ENABLE_REQUEST_CHANNEL && BUFFERED)
+	    {
+		Package pack = {new Channel(RESPONSE_DATA), new Channel(ADDR), new Channel(REQUEST_DATA), new Buffer(i), vector<Die *>()};
+		//pack.channel= new Channel();
+		pack.channel->attachController(controller);
+		pack.channel->attachBuffer(pack.buffer);
+		pack.addrChan->attachController(controller);
+		pack.addrChan->attachBuffer(pack.buffer);
+		pack.requestChan->attachController(controller);
+		pack.requestChan->attachBuffer(pack.buffer);
+		pack.buffer->attachChannel(pack.channel, RESPONSE_DATA);
+		pack.buffer->attachChannel(pack.addrChan, ADDR);
+		pack.buffer->attachChannel(pack.requestChan, REQUEST_DATA);
+		for (j= 0; j < DIES_PER_PACKAGE; j++){
+		    Die *die= new Die(this, log, j);
+		    die->attachToBuffer(pack.buffer);
+		    pack.buffer->attachDie(die);
+		    pack.dies.push_back(die);
+		}
+		packages->push_back(pack);
 	    }
-	    packages->push_back(pack);
+	    else if (ENABLE_ADDR_CHANNEL && BUFFERED)
+	    {
+		Package pack = {new Channel(RESPONSE_DATA), new Channel(ADDR), NULL, new Buffer(i), vector<Die *>()};
+		//pack.channel= new Channel();
+		pack.channel->attachController(controller);
+		pack.channel->attachBuffer(pack.buffer);
+		pack.addrChan->attachController(controller);
+		pack.addrChan->attachBuffer(pack.buffer);
+		pack.buffer->attachChannel(pack.channel, RESPONSE_DATA);
+		pack.buffer->attachChannel(pack.addrChan, ADDR);
+		for (j= 0; j < DIES_PER_PACKAGE; j++){
+		    Die *die= new Die(this, log, j);
+		    die->attachToBuffer(pack.buffer);
+		    pack.buffer->attachDie(die);
+		    pack.dies.push_back(die);
+		}
+		packages->push_back(pack);
+	    }
+	    else if (ENABLE_REQUEST_CHANNEL && BUFFERED)
+	    {
+		Package pack = {new Channel(RESPONSE_DATA), NULL, new Channel(REQUEST_DATA), new Buffer(i), vector<Die *>()};
+		//pack.channel= new Channel();
+		pack.channel->attachController(controller);
+		pack.channel->attachBuffer(pack.buffer);
+		pack.requestChan->attachController(controller);
+		pack.requestChan->attachBuffer(pack.buffer);
+		pack.buffer->attachChannel(pack.channel, RESPONSE_DATA);
+		pack.buffer->attachChannel(pack.requestChan, REQUEST_DATA);
+		for (j= 0; j < DIES_PER_PACKAGE; j++){
+		    Die *die= new Die(this, log, j);
+		    die->attachToBuffer(pack.buffer);
+		    pack.buffer->attachDie(die);
+		    pack.dies.push_back(die);
+		}
+		packages->push_back(pack);
+	    }
+	    else
+	    {
+		Package pack = {new Channel(RESPONSE_DATA), NULL, NULL, new Buffer(i), vector<Die *>()};
+		//pack.channel= new Channel();
+		pack.channel->attachController(controller);
+		pack.channel->attachBuffer(pack.buffer);
+		pack.buffer->attachChannel(pack.channel, RESPONSE_DATA);
+		for (j= 0; j < DIES_PER_PACKAGE; j++){
+		    Die *die= new Die(this, log, j);
+		    die->attachToBuffer(pack.buffer);
+		    pack.buffer->attachDie(die);
+		    pack.dies.push_back(die);
+		}
+		packages->push_back(pack);
+	    } 
 	}
 	controller->attachPackages(packages);
 	

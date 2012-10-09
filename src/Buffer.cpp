@@ -45,6 +45,7 @@ Buffer::Buffer(uint64_t i){
 
     outData = vector<list <BufferPacket *> >(DIES_PER_PACKAGE, list<BufferPacket *>());
     inData = vector<list <BufferPacket *> >(DIES_PER_PACKAGE, list<BufferPacket *>());
+    inWriteCMD = vector<BufferPacket *>(DIES_PER_PACKAGE, 0);
 
     outDataSize = new uint64_t [DIES_PER_PACKAGE];
     inDataSize = new uint64_t [DIES_PER_PACKAGE];
@@ -81,6 +82,21 @@ void Buffer::attachChannel(Channel *c){
     channel = c;
 }
 
+void Buffer::attachChannel(Channel *c, ChannelType t){
+    if(t == REQUEST_DATA)
+    {
+	requestChan = c;
+    }
+    else if(t == ADDR)
+    {
+	addrChan = c;
+    }
+    else
+    {
+	channel = c;
+    }
+}
+
 void Buffer::sendToDie(ChannelPacket *busPacket){
     dies[busPacket->die]->receiveFromBuffer(busPacket);
 }
@@ -89,39 +105,157 @@ void Buffer::sendToController(ChannelPacket *busPacket){
     channel->sendToController(busPacket);
 }
 
-bool Buffer::sendPiece(SenderType t, uint type, uint64_t die, uint64_t plane){
+bool Buffer::sendPiece(SenderType t, ChannelType c, uint type, uint64_t die, uint64_t plane){
     if(t == CONTROLLER)
     {
-      if(IN_BUFFER_SIZE == 0 || inDataSize[die] <= (IN_BUFFER_SIZE-(CHANNEL_WIDTH)))
+	if(ENABLE_ADDR_CHANNEL && ENABLE_REQUEST_CHANNEL)
 	{
-	    if(!inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane &&
-	       type == 5 && inData[die].back()->number < (NV_PAGE_SIZE*8192))
+	    if(IN_BUFFER_SIZE == 0 || inDataSize[die] <= (IN_BUFFER_SIZE-(CHANNEL_WIDTH)))
 	    {
-		inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
-		inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
-	    }
-	    else if(!inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane && 
-		    type != 5 && inData[die].back()->number < COMMAND_LENGTH)
-	    {
-		inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
-		inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		// commands and addresses
+		if(c == ADDR && !inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane &&
+		    inData[die].back()->number < COMMAND_LENGTH)
+		{
+		    inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		// write data
+		else if(c == REQUEST_DATA && !inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane &&
+		    inData[die].back()->number < (NV_PAGE_SIZE*8192))
+		{
+		    inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		// read data - shouldn't be here
+		else if(c == RESPONSE_DATA)
+		{
+		    cout << "controller somehow put something on the response channel, should not have happened \n";
+		    return false;
+		}
+		else
+		{	
+		    BufferPacket* myPacket = new BufferPacket();
+		    myPacket->type = type;
+		    myPacket->number = CHANNEL_WIDTH;
+		    myPacket->plane = plane;
+		    inData[die].push_back(myPacket);
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		return true;
 	    }
 	    else
-	    {	
-		BufferPacket* myPacket = new BufferPacket();
-		myPacket->type = type;
-		myPacket->number = CHANNEL_WIDTH;
-		myPacket->plane = plane;
-		inData[die].push_back(myPacket);
-		inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+	    {
+		//cout << "controller sent packet to buffer " << die << " and plane " << plane << " that didn't fit \n";
+		//cout << "packet type was " << type << "\n";
+		return false;
 	    }
-	    return true;
 	}
+	else if(ENABLE_ADDR_CHANNEL)
+	{
+	    if(IN_BUFFER_SIZE == 0 || inDataSize[die] <= (IN_BUFFER_SIZE-(CHANNEL_WIDTH)))
+	    {
+		// commands and addresses
+		if(c == ADDR && !inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane &&
+		    inData[die].back()->number < COMMAND_LENGTH)
+		{
+		    inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		// write data
+		else if(c == RESPONSE_DATA && !inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane &&
+		    inData[die].back()->number < (NV_PAGE_SIZE*8192))
+		{
+		    inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		else
+		{	
+		    BufferPacket* myPacket = new BufferPacket();
+		    myPacket->type = type;
+		    myPacket->number = CHANNEL_WIDTH;
+		    myPacket->plane = plane;
+		    inData[die].push_back(myPacket);
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		return true;
+	    }
+	    else
+	    {
+		//cout << "controller sent packet to buffer " << die << " and plane " << plane << " that didn't fit \n";
+		//cout << "packet type was " << type << "\n";
+		return false;
+	    }
+	}
+	else if(ENABLE_REQUEST_CHANNEL)
+	{
+	    if(IN_BUFFER_SIZE == 0 || inDataSize[die] <= (IN_BUFFER_SIZE-(CHANNEL_WIDTH)))
+	    {
+		// commands and addresses
+		if(c == REQUEST_DATA && !inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane &&
+		    type != 5 && inData[die].back()->number < COMMAND_LENGTH)
+		{
+		    inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		// write data
+		else if(c == REQUEST_DATA && !inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane &&
+		    type == 5 && inData[die].back()->number < (NV_PAGE_SIZE*8192))
+		{
+		    inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		else
+		{	
+		    BufferPacket* myPacket = new BufferPacket();
+		    myPacket->type = type;
+		    myPacket->number = CHANNEL_WIDTH;
+		    myPacket->plane = plane;
+		    inData[die].push_back(myPacket);
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		return true;
+	    }
+	    else
+	    {
+		//cout << "controller sent packet to buffer " << die << " and plane " << plane << " that didn't fit \n";
+		//cout << "packet type was " << type << "\n";
+		return false;
+	    }
+	}
+	// default, just the response channel
 	else
 	{
-	    //cout << "controller sent packet to buffer " << die << " and plane " << plane << " that didn't fit \n";
-	    //cout << "packet type was " << type << "\n";
-	    return false;
+	    if(IN_BUFFER_SIZE == 0 || inDataSize[die] <= (IN_BUFFER_SIZE-(CHANNEL_WIDTH)))
+	    {
+		if(!inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane &&
+		   type == 5 && inData[die].back()->number < (NV_PAGE_SIZE*8192))
+		{
+		    inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		else if(!inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane && 
+			type != 5 && inData[die].back()->number < COMMAND_LENGTH)
+		{
+		    inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		else
+		{	
+		    BufferPacket* myPacket = new BufferPacket();
+		    myPacket->type = type;
+		    myPacket->number = CHANNEL_WIDTH;
+		    myPacket->plane = plane;
+		    inData[die].push_back(myPacket);
+		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		}
+		return true;
+	    }
+	    else
+	    {
+		//cout << "controller sent packet to buffer " << die << " and plane " << plane << " that didn't fit \n";
+		//cout << "packet type was " << type << "\n";
+		return false;
+	    }
 	}
     }
     else if(t == BUFFER)
@@ -316,7 +450,7 @@ void Buffer::prepareOutChannel(uint64_t die)
 	}
     }
     // if we don't have the channel, get it
-    else if (channel->obtainChannel(id, BUFFER, NULL)){
+    else if (channel->obtainChannel(id, BUFFER, RESPONSE_DATA, NULL)){
 	outDataLeft[die] = (NV_PAGE_SIZE*8192);
 	sendingDie = die;
 	sendingPlane = outData[die].front()->plane;

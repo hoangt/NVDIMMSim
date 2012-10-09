@@ -263,7 +263,7 @@ void Die::update(void){
 		    
 		if(dataCyclesLeft == 0 && deviceBeatsLeft > 0){
 		    bool success = false;
-		    success = buffer->sendPiece(BUFFER, 0, id, returnDataPackets.front()->plane);
+		    success = buffer->sendPiece(BUFFER, RESPONSE_DATA, 0, id, returnDataPackets.front()->plane);
 		    if(success == true)
 		    {
 			deviceBeatsLeft--;
@@ -308,7 +308,7 @@ void Die::update(void){
 							      returnDataPackets.front()->plane) == 0 ||
 			currentCommands[returnDataPackets.front()->plane] != NULL))
 		    {
-			if(buffer->channel->obtainChannel(id, BUFFER, NULL))
+			if(buffer->channel->obtainChannel(id, BUFFER, RESPONSE_DATA, NULL))
 			{
 			    dataCyclesLeft = (divide_params((NV_PAGE_SIZE*8192),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME;
 			}

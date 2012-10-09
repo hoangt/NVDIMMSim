@@ -43,15 +43,17 @@
 #include "Channel.h"
 
 namespace NVDSim{
+
     class Buffer : public SimObj{
         public:
 	    Buffer(uint64_t i);
 	    void attachDie(Die *d);
 	    void attachChannel(Channel *c);
+	    void attachChannel(Channel *c, ChannelType t);
 	    void sendToDie(ChannelPacket *busPacket);
 	    void sendToController(ChannelPacket *busPacket);
 
-	    bool sendPiece(SenderType t, uint type, uint64_t die, uint64_t plane);
+	    bool sendPiece(SenderType t, ChannelType c, uint type, uint64_t die, uint64_t plane);
 	    bool isFull(SenderType t, ChannelPacketType bt, uint64_t die);
 	    
 	    void update(void);
@@ -64,6 +66,8 @@ namespace NVDSim{
 	    bool dataReady(uint64_t die, uint64_t plane); // die asking to send data back
 
 	    Channel *channel;
+	    Channel *addrChan;
+	    Channel *requestChan;
 	    std::vector<Die *> dies;
 
 	    uint64_t id;
@@ -101,6 +105,7 @@ namespace NVDSim{
 	    std::vector<std::list<BufferPacket *> >  outData;
 	    uint64_t* inDataSize;
 	    std::vector<std::list<BufferPacket *> > inData;
+	    std::vector<BufferPacket *> inWriteCMD;
     };
 } 
 

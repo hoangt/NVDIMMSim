@@ -49,6 +49,8 @@
 namespace NVDSim{
 	typedef struct {
 		Channel *channel;
+	        Channel *addrChan;
+	        Channel *requestChan;
 	        Buffer *buffer;
 		std::vector<Die *> dies;
 	} Package;
@@ -84,6 +86,14 @@ namespace NVDSim{
 			bool nextDie(uint64_t package);
 			void update(void);
 			bool dataReady(uint64_t package, uint64_t die, uint64_t plane);
+			bool getChannel(unit64_t package, ChannelPacketType type);
+			bool beginWriteSend(uint64_t package);
+			bool beginReadSend(uint64_t package);
+			bool checkBuffer(uint64_t packet);
+			bool checkChannel(uint64_t packet);
+			bool checkBusy(uint64_t packet);
+			bool releaseChannel(unit64_t packet);
+			void sendPiece(uint64_t packet);
 
 			void sendQueueLength(void);
 

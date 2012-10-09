@@ -153,9 +153,21 @@ extern uint64_t VIRTUAL_BLOCKS_PER_PLANE;
 extern uint64_t PAGES_PER_BLOCK;
 extern uint64_t NV_PAGE_SIZE;
 extern float DEVICE_CYCLE; // in nanoseconds
-extern float CHANNEL_CYCLE; // in nanoseconds
 extern uint64_t DEVICE_WIDTH;
+
+// Channel options
+extern float CHANNEL_CYCLE; //default channel, becomes up channel when down channel is enabled
 extern uint64_t CHANNEL_WIDTH;
+
+extern bool ENABLE_ADDR_CHANNEL;
+extern float ADDR_CHANNEL_CYCLE;
+extern uint64_t ADDR_CHANNEL_WIDTH;
+
+extern bool ENABLE_REQUEST_CHANNEL;
+extern float REQUEST_CHANNEL_CYCLE;
+extern uint64_t REQUEST_CHANNEL_WIDTH;
+
+
 // does the device use garbage collection 
 extern bool GARBAGE_COLLECT;
 extern bool PRESTATE;
