@@ -449,6 +449,19 @@ namespace NVDSim
 		    {
 			channel_clock_counter[i] += CHANNEL_CYCLE;
 			package.channel->update();
+			if(ENABLE_ADDR_CHANNEL && ENABLE_REQUEST_CHANNEL)
+			{
+			    package.requestChan->update();
+			    package.addrChan->update();
+			}
+			else if(ENABLE_ADDR_CHANNEL)
+			{
+			    package.addrChan->update();
+			}
+			else if(ENABLE_REQUEST_CHANNEL)
+			{
+			    package.requestChan->update();
+			}
 			package.buffer->update();
 		    }
 

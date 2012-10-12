@@ -160,11 +160,9 @@ extern float CHANNEL_CYCLE; //default channel, becomes up channel when down chan
 extern uint64_t CHANNEL_WIDTH;
 
 extern bool ENABLE_ADDR_CHANNEL;
-extern float ADDR_CHANNEL_CYCLE;
 extern uint64_t ADDR_CHANNEL_WIDTH;
 
 extern bool ENABLE_REQUEST_CHANNEL;
-extern float REQUEST_CHANNEL_CYCLE;
 extern uint64_t REQUEST_CHANNEL_WIDTH;
 
 

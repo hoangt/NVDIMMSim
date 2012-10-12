@@ -86,14 +86,16 @@ namespace NVDSim{
 			bool nextDie(uint64_t package);
 			void update(void);
 			bool dataReady(uint64_t package, uint64_t die, uint64_t plane);
-			bool getChannel(unit64_t package, ChannelPacketType type);
+			bool getChannel(uint64_t package, ChannelPacket *p);
 			bool beginWriteSend(uint64_t package);
 			bool beginReadSend(uint64_t package);
-			bool checkBuffer(uint64_t packet);
-			bool checkChannel(uint64_t packet);
-			bool checkBusy(uint64_t packet);
-			bool releaseChannel(unit64_t packet);
-			void sendPiece(uint64_t packet);
+			bool checkBuffer(uint64_t packet, ChannelPacketType type);
+			bool checkChannel(uint64_t packet, ChannelPacketType type);
+			bool checkBusy(uint64_t packet, ChannelPacketType type);
+			bool releaseChannel(uint64_t packet, ChannelPacketType type);
+			void sendPiece(uint64_t packet, ChannelPacketType type);
+
+			uint64_t getChannelWidth(ChannelPacketType type);
 
 			void sendQueueLength(void);
 

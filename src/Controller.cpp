@@ -426,7 +426,7 @@ void Controller::update(void){
 	    {
 		if (!readQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
 		    //if we can get the channel
-		    if (getChannel(i, readQueues[i][die_pointers[i]].front()->busPacketType){
+		    if (getChannel(i, readQueues[i][die_pointers[i]].front())){
 			outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
 			if(LOGGING && QUEUE_EVENT_LOG)
 			{
@@ -452,10 +452,10 @@ void Controller::update(void){
 			case DATA:
 			    // Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
 			    // are in 1 KB (1024 * 8).
-			    channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8192),CHANNEL_WIDTH); 
+			    channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8192), getChannelWidth(outgoingPackets[i]->busPacketType)); 
 			    break;
 			default:
-			    channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+			    channelBeatsLeft[i] = divide_params(COMMAND_LENGTH, getChannelWidth(outgoingPackets[i]->busPacketType));
 			    break;
 			}
 			// managed to place something so we're done with this channel
@@ -490,50 +490,52 @@ void Controller::update(void){
 	for (i= 0; i < outgoingPackets.size(); i++){
 	    if (outgoingPackets[i] != NULL){
 		if(paused[outgoingPackets[i]->package] == true && 
-		   !checkBuffer(i))
+		   !checkBuffer(i, outgoingPackets[i]->busPacketType))
 		{
-		    if (getChannel(i)){
+		    if (getChannel(i, outgoingPackets[i])){
 			paused[outgoingPackets[i]->package] = false;
 		    }
 		}
-		if (checkChannel(i) && paused[outgoingPackets[i]->package] == false){
+		if (checkChannel(i, outgoingPackets[i]->busPacketType) && paused[outgoingPackets[i]->package] == false){
 		    if (channelBeatsLeft[i] == 0){
-			releaseChannel(i);
+			releaseChannel(i, outgoingPackets[i]->busPacketType);
 			pendingPackets[i].push_back(outgoingPackets[i]);
 			outgoingPackets[i] = NULL;
-		    }else if (checkBusy(i)){
+		    }else if (checkBusy(i, outgoingPackets[i]->busPacketType)){
 			    if(CUT_THROUGH)
 			    {
-				if(!checkBuffer(i))
+				if(!checkBuffer(i, outgoingPackets[i]->busPacketType))
 				    {
-					sendPiece(i);
+					sendPiece(i, outgoingPackets[i]->busPacketType);
 					channelBeatsLeft[i]--;
 				    }
 				    else
 				    {
-					releaseChannel(i);
+					releaseChannel(i, outgoingPackets[i]->busPacketType);
 					    paused[outgoingPackets[i]->package] = true;
 				    }
 			    }
 			    else
 			    {
-				if((outgoingPackets[i]->busPacketType == DATA && channelBeatsLeft[i] == divide_params((NV_PAGE_SIZE*8192),CHANNEL_WIDTH)) ||
-				   (outgoingPackets[i]->busPacketType != DATA && channelBeatsLeft[i] == divide_params(COMMAND_LENGTH,CHANNEL_WIDTH)))
+				if((outgoingPackets[i]->busPacketType == DATA && 
+				    channelBeatsLeft[i] == divide_params((NV_PAGE_SIZE*8192), getChannelWidth(outgoingPackets[i]->busPacketType))) ||
+				   (outgoingPackets[i]->busPacketType != DATA && 
+				    channelBeatsLeft[i] == divide_params(COMMAND_LENGTH, getChannelWidth(outgoingPackets[i]->busPacketType))))
 				{
-				    if(!checkBuffer(i))
+				    if(!checkBuffer(i, outgoingPackets[i]->busPacketType))
 				    {
-					sendPiece(i);
+					sendPiece(i, outgoingPackets[i]->busPacketType);
 					channelBeatsLeft[i]--;
 				    }
 				    else
 				    {
-					releaseChannel(i);
+					releaseChannel(i, outgoingPackets[i]->busPacketType);
 					paused[outgoingPackets[i]->package] = true;
 				    }
 				}
 				else
 				{
-				    sendPiece(i);
+				    sendPiece(i, outgoingPackets[i]->busPacketType);
 				    channelBeatsLeft[i]--;					    
 				}
 			    }
@@ -582,17 +584,17 @@ bool Controller::dataReady(uint64_t package, uint64_t die, uint64_t plane)
     return 0;
 }
 
-bool Controller::getChannel(unit64_t package, ChannelPacketType type)
+bool Controller::getChannel(uint64_t package, ChannelPacket *p)
 {
-    if( == DATA)
+    if(p->busPacketType == DATA)
     {
 	if(ENABLE_REQUEST_CHANNEL)
 	{
-	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, REQUEST_CHANNEL, writeQueues[package][die_pointers[package]].front());
+	    return (*packages)[package].requestChan->obtainChannel(0, CONTROLLER, REQUEST_DATA, p);
 	}
 	else
 	{
-	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, RESPONSE_CHANNEL, writeQueues[package][die_pointers[package]].front());
+	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, RESPONSE_DATA, p);
 	}
     }
     // commands
@@ -600,15 +602,15 @@ bool Controller::getChannel(unit64_t package, ChannelPacketType type)
     {
 	if(ENABLE_ADDR_CHANNEL)
 	{
-	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, ADDR, writeQueues[package][die_pointers[package]].front());
+	    return (*packages)[package].addrChan->obtainChannel(0, CONTROLLER, ADDR, p);
 	}
 	else if(ENABLE_REQUEST_CHANNEL)
 	{
-	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, REQUEST_CHANNEL, writeQueues[package][die_pointers[package]].front());
+	    return (*packages)[package].requestChan->obtainChannel(0, CONTROLLER, REQUEST_DATA, p);
 	}
 	else
 	{
-	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, RESPONSE_CHANNEL, writeQueues[package][die_pointers[package]].front());
+	    return (*packages)[package].channel->obtainChannel(0, CONTROLLER, RESPONSE_DATA, p);
 	}
     }
     return 0;
@@ -616,7 +618,7 @@ bool Controller::getChannel(unit64_t package, ChannelPacketType type)
 
 bool Controller::beginWriteSend(uint64_t package)
 {
-    if (getChannel(package, writeQueues[package][die_pointers[package]].front()->busPacketType)){
+    if (getChannel(package, writeQueues[package][die_pointers[package]].front())){
 	outgoingPackets[package] = writeQueues[package][die_pointers[package]].front();
 	if(LOGGING && QUEUE_EVENT_LOG)
 	{
@@ -629,10 +631,10 @@ bool Controller::beginWriteSend(uint64_t package)
 	case DATA:
 	    // Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
 	    // are in 1 KB (1024 * 8).
-	    channelBeatsLeft[package] = divide_params((NV_PAGE_SIZE*8192),CHANNEL_WIDTH); 
+	    channelBeatsLeft[package] = divide_params((NV_PAGE_SIZE*8192), getChannelWidth(outgoingPackets[package]->busPacketType)); 
 	    break;
 	default:
-	    channelBeatsLeft[package] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+	    channelBeatsLeft[package] = divide_params(COMMAND_LENGTH, getChannelWidth(outgoingPackets[package]->busPacketType));
 	    break;
 	}
 	// managed to place something so we're done with this channel
@@ -651,9 +653,9 @@ bool Controller::beginWriteSend(uint64_t package)
     }
 }
 
-bool Controller::beginReadSend(unit64_t package)
+bool Controller::beginReadSend(uint64_t package)
 {
-    if (getChannel(package, readQueues[package][die_pointers[package]].front()->busPacketType)){
+    if (getChannel(package, readQueues[package][die_pointers[package]].front())){
 	outgoingPackets[package] = readQueues[package][die_pointers[package]].front();
 	if(LOGGING && QUEUE_EVENT_LOG)
 	{
@@ -662,7 +664,7 @@ bool Controller::beginReadSend(unit64_t package)
 	readQueues[package][die_pointers[package]].pop_front();
 	parentNVDIMM->queuesNotFull();
 	
-	channelBeatsLeft[package] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+	channelBeatsLeft[package] = divide_params(COMMAND_LENGTH, getChannelWidth(outgoingPackets[package]->busPacketType));
 	// managed to place something so we're done with this channel
 	// advance the die pointer since this die is now busy
 	die_pointers[package]++;
@@ -679,9 +681,9 @@ bool Controller::beginReadSend(unit64_t package)
     }
 }
 
-bool Controller::checkBuffer(uint64_t packet)
+bool Controller::checkBuffer(uint64_t packet, ChannelPacketType type)
 {
-    if( == DATA)
+    if(type == DATA)
     {
 	if(ENABLE_REQUEST_CHANNEL)
 	{
@@ -711,9 +713,9 @@ bool Controller::checkBuffer(uint64_t packet)
     return 0;
 }
 
-bool Controller::checkChannel(uint64_t packet)
+bool Controller::checkChannel(uint64_t packet, ChannelPacketType type)
 {
-    if( == DATA)
+    if(type == DATA)
     {
 	if(ENABLE_REQUEST_CHANNEL)
 	{
@@ -743,9 +745,9 @@ bool Controller::checkChannel(uint64_t packet)
     return 0;
 }
 
-bool Controller::checkBusy(uint64_t packet)
+bool Controller::checkBusy(uint64_t packet, ChannelPacketType type)
 {
-    if( == DATA)
+    if(type == DATA)
     {
 	if(ENABLE_REQUEST_CHANNEL)
 	{
@@ -775,9 +777,9 @@ bool Controller::checkBusy(uint64_t packet)
     return 0;
 }
 
-bool Controller::releaseChannel(uint64_t packet)
+bool Controller::releaseChannel(uint64_t packet, ChannelPacketType type)
 {
-    if( == DATA)
+    if(type == DATA)
     {
 	if(ENABLE_REQUEST_CHANNEL)
 	{
@@ -807,9 +809,9 @@ bool Controller::releaseChannel(uint64_t packet)
     return 0;
 }
 
-void Controller::sendPiece(unit64_t packet)
+void Controller::sendPiece(uint64_t packet, ChannelPacketType type)
 {
-    if( == DATA)
+    if(type == DATA)
     {
 	if(ENABLE_REQUEST_CHANNEL)
 	{
@@ -841,6 +843,38 @@ void Controller::sendPiece(unit64_t packet)
 									outgoingPackets[packet]->die, outgoingPackets[packet]->plane);
 	}
     }
+}
+
+uint64_t Controller::getChannelWidth(ChannelPacketType type)
+{
+    if(type == DATA)
+    {
+	if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return REQUEST_CHANNEL_WIDTH;
+	}
+	else
+	{
+	    return CHANNEL_WIDTH;
+	}
+    }
+    // commands
+    else
+    {
+	if(ENABLE_ADDR_CHANNEL)
+	{
+	    return ADDR_CHANNEL_WIDTH;
+	}
+	else if(ENABLE_REQUEST_CHANNEL)
+	{
+	    return REQUEST_CHANNEL_WIDTH;
+	}
+	else
+	{
+	    return CHANNEL_WIDTH;
+	}
+    }
+    return 0;
 }
 
 void Controller::sendQueueLength(void)

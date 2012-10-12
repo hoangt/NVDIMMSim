@@ -65,6 +65,8 @@ namespace NVDSim{
 
 	    bool dataReady(uint64_t die, uint64_t plane); // die asking to send data back
 
+	    uint64_t getChannelWidth(uint type);
+
 	    Channel *channel;
 	    Channel *addrChan;
 	    Channel *requestChan;
