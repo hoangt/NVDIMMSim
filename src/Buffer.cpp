@@ -204,14 +204,13 @@ bool Buffer::sendPiece(SenderType t, ChannelType c, uint type, uint64_t die, uin
 		    }
 		    
 		    inData[die].push_back(myPacket);
-		    cout << "started a new packet to buffer " << die << " and plane " << plane << " of type " << type << "\n";
 		}
 		return true;
 	    }
 	    else
 	    {
-		cout << "controller sent packet to buffer " << die << " and plane " << plane << " that didn't fit \n";
-		cout << "packet type was " << type << "\n";
+		//cout << "controller sent packet to buffer " << die << " and plane " << plane << " that didn't fit \n";
+		//cout << "packet type was " << type << "\n";
 		return false;
 	    }
 	}

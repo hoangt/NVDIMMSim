@@ -463,6 +463,7 @@ namespace NVDSim
 			    package.requestChan->update();
 			}
 			package.buffer->update();
+			package.buffer->step();
 		    }
 
 		    if(channel_clock_counter[i] == nv_clock_counter3[i])
@@ -495,6 +496,7 @@ namespace NVDSim
 		{
 		    package.channel->update();
 		    package.buffer->update();
+		    package.buffer->step();
 		}		
 		for (j= 0; j < package.dies.size() ; j++)
 		{
