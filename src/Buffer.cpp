@@ -174,6 +174,7 @@ bool Buffer::sendPiece(SenderType t, ChannelType c, uint type, uint64_t die, uin
 		{
 		    inData[die].back()->number = inData[die].back()->number + ADDR_CHANNEL_WIDTH;
 		    inDataSize[die] = inDataSize[die] + ADDR_CHANNEL_WIDTH;
+		    cout << "Updated a command packet, inDataSize is now " << inDataSize[die] << " die is " << die << "\n";
 		}
 		// write data
 		else if(c == RESPONSE_DATA && !inData[die].empty() && inData[die].back()->type == type && inData[die].back()->plane == plane &&
@@ -181,6 +182,7 @@ bool Buffer::sendPiece(SenderType t, ChannelType c, uint type, uint64_t die, uin
 		{
 		    inData[die].back()->number = inData[die].back()->number + CHANNEL_WIDTH;
 		    inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+		    cout << "Updated a data packet, inDataSize is now " << inDataSize[die] << " die is " << die << "\n";
 		}
 		else
 		{      
@@ -192,11 +194,14 @@ bool Buffer::sendPiece(SenderType t, ChannelType c, uint type, uint64_t die, uin
 		    {
 			myPacket->number = ADDR_CHANNEL_WIDTH;
 			inDataSize[die] = inDataSize[die] + ADDR_CHANNEL_WIDTH;
+			cout << "created a new command packet, inDataSize was " << inDataSize[die] << " die is " << die << "\n";
 		    }
 		    else if(c == RESPONSE_DATA)
 		    {
 			myPacket->number = CHANNEL_WIDTH;
 			inDataSize[die] = inDataSize[die] + CHANNEL_WIDTH;
+			cout << "created a new data packet, inDataSize was " << inDataSize[die] << " we need " << divide_params((NV_PAGE_SIZE*8192), CHANNEL_WIDTH)*CHANNEL_WIDTH << " bits \n";
+			cout << "die is " << die << "\n";
 		    }
 		    else
 		    {
@@ -209,8 +214,9 @@ bool Buffer::sendPiece(SenderType t, ChannelType c, uint type, uint64_t die, uin
 	    }
 	    else
 	    {
-		//cout << "controller sent packet to buffer " << die << " and plane " << plane << " that didn't fit \n";
-		//cout << "packet type was " << type << "\n";
+		cout << "controller sent packet to buffer " << die << " and plane " << plane << " that didn't fit \n";
+		cout << "packet type was " << type << "\n";
+		cout << "inDataSize was " << inDataSize[die] << " and we had " << (IN_BUFFER_SIZE-(getChannelWidth(type))) << " bits left \n";
 		return false;
 	    }
 	}
@@ -325,16 +331,21 @@ bool Buffer::isFull(SenderType t, ChannelPacketType bt, uint64_t die)
       {
 	      return false;
       }
-      else if(CUT_THROUGH && inDataSize[die] <= (IN_BUFFER_SIZE-getChannelWidth(bt)) && waiting[die] == false)
+      else if(CUT_THROUGH && IN_BUFFER_SIZE - inDataSize[die] >= getChannelWidth(bt) && waiting[die] == false)
       {
 	      return false;
       }
-      else if(!CUT_THROUGH && bt == 5 && inDataSize[die] <= (IN_BUFFER_SIZE-(divide_params((NV_PAGE_SIZE*8192), getChannelWidth(bt))*getChannelWidth(bt))))
+      else if(!CUT_THROUGH && bt == 5 && IN_BUFFER_SIZE - inDataSize[die] >= (divide_params((NV_PAGE_SIZE*8192), getChannelWidth(bt))*getChannelWidth(bt)))
       {
+	cout << "cleared a new data packet for transimission, we had " << IN_BUFFER_SIZE - inDataSize[die] << " bits free \n";
+	cout << "inDataSize was " << inDataSize[die] << "\n";
 	      return false;
       }
-      else if(!CUT_THROUGH && bt != 5 && inDataSize[die] <= (IN_BUFFER_SIZE-(divide_params(COMMAND_LENGTH, getChannelWidth(bt))*getChannelWidth(bt))))
+      else if(!CUT_THROUGH && bt != 5 && IN_BUFFER_SIZE - inDataSize[die] >= (divide_params(COMMAND_LENGTH, getChannelWidth(bt))*getChannelWidth(bt)))
       {
+	cout << "cleared a new command packet for transimission, we had " << IN_BUFFER_SIZE - inDataSize[die] << " bits free \n";
+	cout << "we needed " << (divide_params(COMMAND_LENGTH, getChannelWidth(bt))*getChannelWidth(bt)) << "bits free \n";
+	cout << "inDataSize was " << inDataSize[die] << "\n";
 	      return false;
       }
       else
@@ -349,11 +360,11 @@ bool Buffer::isFull(SenderType t, ChannelPacketType bt, uint64_t die)
 	    {
 		    return false;
 	    }
-	    if(CUT_THROUGH && outDataSize[die] <= (OUT_BUFFER_SIZE-DEVICE_WIDTH))
+	    if(CUT_THROUGH && OUT_BUFFER_SIZE - outDataSize[die] >= DEVICE_WIDTH)
 	    {
 		    return false;
 	    }
-	    else if(!CUT_THROUGH && outDataSize[die] <= (OUT_BUFFER_SIZE-(divide_params((NV_PAGE_SIZE*8192), DEVICE_WIDTH)*DEVICE_WIDTH)))
+	    else if(!CUT_THROUGH && OUT_BUFFER_SIZE - outDataSize[die] >= (divide_params((NV_PAGE_SIZE*8192), DEVICE_WIDTH)*DEVICE_WIDTH))
 	    {
 		    return false;
 	    }
