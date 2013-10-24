@@ -108,15 +108,9 @@ extern bool SCHEDULE;
 extern bool WRITE_ON_QUEUE_SIZE;
 extern uint WRITE_QUEUE_LIMIT;
 extern bool IDLE_WRITE;
-extern bool CTRL_SCHEDULE;
-extern bool CTRL_WRITE_ON_QUEUE_SIZE;
-extern uint CTRL_WRITE_QUEUE_LIMIT;
-extern bool CTRL_IDLE_WRITE;
-extern bool PERFECT_SCHEDULE;
-extern bool ENABLE_WRITE_SCRIPT;
-extern std::string NV_WRITE_SCRIPT;
 extern bool DELAY_WRITE;
 extern uint DELAY_WRITE_CYCLES;
+extern bool FTL_QUEUE_HANDLING;
 
 // SSD Options
 extern bool DISK_READ;
@@ -174,7 +168,7 @@ extern uint64_t REQUEST_CHANNEL_WIDTH;
 // does the device use garbage collection 
 extern bool GARBAGE_COLLECT;
 extern bool PRESTATE;
-extern uint PERCENT_FULL;
+extern uint PERCENT_DIRTY;
 
 #define GC GARBAGE_COLLECT
 
@@ -206,8 +200,7 @@ extern float SYSTEM_CYCLE;
 
 extern uint EPOCH_TIME;
 #define USE_EPOCHS (EPOCH_TIME > 0)
-extern uint FTL_READ_QUEUE_LENGTH;
-extern uint FTL_WRITE_QUEUE_LENGTH;
+extern uint FTL_QUEUE_LENGTH;
 extern uint CTRL_READ_QUEUE_LENGTH;
 extern uint CTRL_WRITE_QUEUE_LENGTH;
 

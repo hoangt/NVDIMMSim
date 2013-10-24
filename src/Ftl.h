@@ -55,22 +55,18 @@ namespace NVDSim{
 
 			ChannelPacket *translate(ChannelPacketType type, uint64_t vAddr, uint64_t pAddr);
 			bool attemptAdd(FlashTransaction &t, std::list<FlashTransaction> *queue, uint64_t queue_limit);
-			bool addScheduledTransaction(FlashTransaction &t);
-			bool addPerfectTransaction(FlashTransaction &t);
+			bool checkQueueAddTransaction(FlashTransaction &t);
 			virtual bool addTransaction(FlashTransaction &t);
-			void scriptCurrentTransaction(void);
-			void scheduleCurrentTransaction(void);
 			virtual void update(void);
 			void handle_disk_read(bool gc);
 			void handle_read(bool gc);
 			virtual void write_used_handler(uint64_t vAddr);
 			void write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t pAddr, bool gc, bool mapped);
-			void handle_scripted_write(void);
 			void handle_write(bool gc);
 			uint64_t get_ptr(void); 
 			void inc_ptr(void); 
 
-			virtual void popFront(ChannelPacketType type);
+			virtual void popFrontTransaction();
 
 			void sendQueueLength(void);
 			
@@ -120,8 +116,8 @@ namespace NVDSim{
 
 			bool saved;
 			bool loaded;
-			bool read_queues_full;
-			bool write_queues_full;
+			bool ctrl_write_queues_full;
+			bool ctrl_read_queues_full;
 			bool flushing_write;
 
 			uint queue_access_counter; // time it takes to get the data out of the write queue
@@ -130,8 +126,7 @@ namespace NVDSim{
 
 			std::unordered_map<uint64_t,uint64_t> addressMap;
 			std::vector<vector<bool>> used;
-			std::list<FlashTransaction> readQueue; 
-			std::list<FlashTransaction> writeQueue;
+			std::list<FlashTransaction> transQueue; 
 	};
 }
 #endif

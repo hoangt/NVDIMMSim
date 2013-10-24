@@ -180,7 +180,7 @@ void Controller::receiveFromChannel(ChannelPacket *busPacket){
 // this is only called on a write as the name suggests
 bool Controller::checkQueueWrite(ChannelPacket *p)
 {
-    if(CTRL_SCHEDULE)
+    if(SCHEDULE)
     {
 	if ((writeQueues[p->package][p->die].size() + 1 < CTRL_WRITE_QUEUE_LENGTH) || (CTRL_WRITE_QUEUE_LENGTH == 0))
 	    return true;
@@ -197,7 +197,7 @@ bool Controller::checkQueueWrite(ChannelPacket *p)
 }
 
 bool Controller::addPacket(ChannelPacket *p){
-    if(CTRL_SCHEDULE)
+    if(SCHEDULE)
     {
 	// If there is not room in the command queue for this packet, then return false.
 	// If CTRL_QUEUE_LENGTH is 0, then infinite queues are allowed.
@@ -325,7 +325,7 @@ bool Controller::nextDie(uint64_t package)
 
 void Controller::update(void){
     // schedule the next operation for each die
-    if(CTRL_SCHEDULE)
+    if(SCHEDULE)
     {
 	bool write_queue_handled = false;
 	uint64_t i;	
@@ -339,7 +339,7 @@ void Controller::update(void){
 	    {
 		// do we need to issue a write
 		// *** NOTE: We need to review this write condition for out new design ***
-		if((CTRL_WRITE_ON_QUEUE_SIZE == true && writeQueues[i][die_pointers[i]].size() >= CTRL_WRITE_QUEUE_LIMIT)) //||
+		if((WRITE_ON_QUEUE_SIZE == true && writeQueues[i][die_pointers[i]].size() >= WRITE_QUEUE_LIMIT)) //||
 		    //(CTRL_WRITE_ON_QUEUE_SIZE == false && writeQueues[i][die_pointers[i]].size() >= CTRL_WRITE_QUEUE_LENGTH-1))
 		{
 		    if (!writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
@@ -467,7 +467,7 @@ void Controller::update(void){
 		    }
 		}
 		// if there are no reads to send see if we're allowed to send a write instead
-		else if (CTRL_IDLE_WRITE == true && !writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
+		else if (IDLE_WRITE == true && !writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
 		    //if we can get the channel
 		    if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, writeQueues[i][die_pointers[i]].front())){
 			outgoingPackets[i] = writeQueues[i][die_pointers[i]].front();

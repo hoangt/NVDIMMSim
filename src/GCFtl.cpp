@@ -68,18 +68,14 @@ bool GCFtl::addTransaction(FlashTransaction &t){
 	{
 	    // we are going to favor reads over writes
 	    // so writes get put into a special lower prioirty queue
-	    if(SCHEDULE)
+	    if(FTL_QUEUE_HANDLING)
 	    {
-		return addScheduledTransaction(t);
-	    }
-	    else if(PERFECT_SCHEDULE)
-	    {
-		return addPerfectTransaction(t);
+		return checkQueueAddTransaction(t);
 	    }
 	    // no scheduling, so just shove everything into the read queue
 	    else
 	    {
-		return attemptAdd(t, &readQueue, FTL_READ_QUEUE_LENGTH);
+		return attemptAdd(t, &transQueue, FTL_QUEUE_LENGTH);
 	    }
 	}
     }
@@ -90,7 +86,7 @@ bool GCFtl::addTransaction(FlashTransaction &t){
 void GCFtl::addGcTransaction(FlashTransaction &t){ 
     // we use a special GC queue whether we're scheduling or not so always just do it like this
     gcQueue.push_back(t);
-    write_queues_full = false;
+    ctrl_write_queues_full = false;
     
     if(LOGGING == true)
     {
@@ -130,7 +126,7 @@ void GCFtl::update(void){
 	}
 
 	if (busy) {
-	    if (lookupCounter <= 0 && !write_queues_full){
+	    if (lookupCounter <= 0 && !ctrl_write_queues_full){
 			uint64_t vAddr = currentTransaction.address;
 			bool result = false;
 			ChannelPacket *commandPacket;
@@ -138,7 +134,7 @@ void GCFtl::update(void){
 			switch (currentTransaction.transactionType){
 				case DATA_READ:
 				{
-				    if(!read_queues_full)
+				    if(!ctrl_read_queues_full)
 				    {
 					handle_read(false);
 				    }
@@ -180,14 +176,14 @@ void GCFtl::update(void){
 					    }
 					    else
 					    {
-						read_pointer = readQueue.erase(read_pointer);
+						transQueue.pop_front();
 					    }
 					    busy = 0;
 					}
 					else
 					{
 					    delete commandPacket;
-					    write_queues_full = true;
+					    ctrl_write_queues_full = true;
 					}
 					break;		
 
@@ -201,7 +197,7 @@ void GCFtl::update(void){
 		{
 			lookupCounter--;
 		}
-		else if(write_queues_full || read_queues_full)
+		else if(ctrl_write_queues_full || ctrl_read_queues_full)
 		{
 		    locked_counter++;
 		}
@@ -222,29 +218,11 @@ void GCFtl::update(void){
 		    busy = 0;
 		}
 	    }
-	    // if we're not in gc mode and...
-	    // we're favoring reads over writes so we need to check the write queues to make sure they
-	    // aren't filling up. if they are we issue a write, otherwise we just keeo on issuing reads
-	    else if(SCHEDULE || PERFECT_SCHEDULE)
-	    {
-		if(ENABLE_WRITE_SCRIPT)
-		{
-		    scriptCurrentTransaction();
-		}
-		// standard scheduling
-		else
-		{
-		    // schedule the next transaction using the scheduler algorithm in Ftl.cpp
-		    scheduleCurrentTransaction();
-		}
-
-	    }
-	     // we're not scheduling so everything is in the read queue
-	    // just issue from there
+	    // issue the next transaction on the queue
 	    else {
-		if (!readQueue.empty()) {
+		if (!transQueue.empty()) {
 		    busy = 1;
-		    currentTransaction = readQueue.front();
+		    currentTransaction = transQueue.front();
 		    lookupCounter = LOOKUP_TIME;
 		}
 		// do nothing
@@ -394,34 +372,11 @@ void GCFtl::popFront(ChannelPacketType type)
     {
 	gcQueue.pop_front();
     }
-    // if we've put stuff into different queues we must now figure out which queue to pop from
-    else if(SCHEDULE || PERFECT_SCHEDULE)
-    {
-	if(type == READ)
-	{
-	    read_pointer = readQueue.erase(read_pointer);
-	    // we finished the read we were trying now go back to the front of the list and try
-	    // the first one again
-	    read_pointer = readQueue.begin();
-	    if(LOGGING && QUEUE_EVENT_LOG)
-	    {
-		log->log_ftl_queue_event(false, &readQueue);
-	    }
-	}
-	else if(type == WRITE)
-	{
-	    writeQueue.pop_front();
-	    if(LOGGING && QUEUE_EVENT_LOG)
-	    {
-		log->log_ftl_queue_event(true, &writeQueue);
-	    }
-	}
-    }
-    // if we're just putting everything into the read queue, just pop from there
+    // we're putting everything into the transaction queue, just pop from there
     // unless its a gc operation then pop from the gcQueue
     else
     {
-	readQueue.pop_front();
+	transQueue.pop_front();
     }
 }
 
@@ -429,7 +384,7 @@ void GCFtl::sendQueueLength(void)
 {
 	if(LOGGING == true)
 	{
-	    log->ftlQueueLength(readQueue.size(), gcQueue.size());
+	    log->ftlQueueLength(transQueue.size(), gcQueue.size());
 	}
 }
 

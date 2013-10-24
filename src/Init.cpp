@@ -45,16 +45,10 @@ namespace NVDSim
     bool WRITE_ON_QUEUE_SIZE;
     uint WRITE_QUEUE_LIMIT;
     bool IDLE_WRITE;
-    bool CTRL_SCHEDULE;
-    bool CTRL_WRITE_ON_QUEUE_SIZE;
-    uint CTRL_WRITE_QUEUE_LIMIT;
-    bool CTRL_IDLE_WRITE;
-    bool PERFECT_SCHEDULE;
-    bool ENABLE_WRITE_SCRIPT;
-    std::string NV_WRITE_SCRIPT;
     bool DELAY_WRITE;
     uint DELAY_WRITE_CYCLES;
     bool DISK_READ;
+    bool FTL_QUEUE_HANDLING;
 
     bool FRONT_BUFFER;
     uint64_t REQUEST_BUFFER_SIZE;
@@ -103,7 +97,7 @@ namespace NVDSim
 
     bool GARBAGE_COLLECT;
     bool PRESTATE;
-    uint PERCENT_FULL;
+    uint PERCENT_DIRTY;
     
     uint READ_TIME;
     uint WRITE_TIME;
@@ -116,9 +110,8 @@ namespace NVDSim
     float CYCLE_TIME;
     float SYSTEM_CYCLE;
 
-    uint FTL_READ_QUEUE_LENGTH;
+    uint FTL_QUEUE_LENGTH;
     uint CTRL_READ_QUEUE_LENGTH;
-    uint FTL_WRITE_QUEUE_LENGTH;
     uint CTRL_WRITE_QUEUE_LENGTH;
 
     double READ_I;
@@ -148,16 +141,10 @@ namespace NVDSim
 	DEFINE_BOOL_PARAM(WRITE_ON_QUEUE_SIZE, DEV_PARAM),
 	DEFINE_UINT_PARAM(WRITE_QUEUE_LIMIT, DEV_PARAM),
 	DEFINE_BOOL_PARAM(IDLE_WRITE, DEV_PARAM),
-	DEFINE_BOOL_PARAM(CTRL_SCHEDULE, DEV_PARAM),
-	DEFINE_BOOL_PARAM(CTRL_WRITE_ON_QUEUE_SIZE, DEV_PARAM),
-	DEFINE_UINT_PARAM(CTRL_WRITE_QUEUE_LIMIT, DEV_PARAM),
-	DEFINE_BOOL_PARAM(CTRL_IDLE_WRITE, DEV_PARAM),
-	DEFINE_BOOL_PARAM(PERFECT_SCHEDULE, DEV_PARAM),
-	DEFINE_BOOL_PARAM(ENABLE_WRITE_SCRIPT, DEV_PARAM),
-	DEFINE_STRING_PARAM(NV_WRITE_SCRIPT, DEV_PARAM),
 	DEFINE_BOOL_PARAM(DELAY_WRITE, DEV_PARAM),
 	DEFINE_UINT_PARAM(DELAY_WRITE_CYCLES, DEV_PARAM),
 	DEFINE_BOOL_PARAM(DISK_READ, DEV_PARAM),
+	DEFINE_BOOL_PARAM(FTL_QUEUE_HANDLING, DEV_PARAM),
 	DEFINE_BOOL_PARAM(FRONT_BUFFER, DEV_PARAM),
 	DEFINE_UINT64_PARAM(REQUEST_BUFFER_SIZE, DEV_PARAM),
 	DEFINE_UINT64_PARAM(RESPONSE_BUFFER_SIZE, DEV_PARAM),
@@ -197,7 +184,7 @@ namespace NVDSim
 	DEFINE_UINT64_PARAM(REQUEST_CHANNEL_WIDTH,DEV_PARAM),
 	DEFINE_BOOL_PARAM(GARBAGE_COLLECT,DEV_PARAM),
 	DEFINE_BOOL_PARAM(PRESTATE,DEV_PARAM),
-	DEFINE_UINT_PARAM(PERCENT_FULL,DEV_PARAM),
+	DEFINE_UINT_PARAM(PERCENT_DIRTY,DEV_PARAM),
 	DEFINE_UINT_PARAM(READ_TIME,DEV_PARAM),
 	DEFINE_UINT_PARAM(WRITE_TIME,DEV_PARAM),
 	DEFINE_UINT_PARAM(ERASE_TIME,DEV_PARAM),
@@ -208,9 +195,8 @@ namespace NVDSim
 	DEFINE_UINT_PARAM(EPOCH_TIME,DEV_PARAM),
 	DEFINE_FLOAT_PARAM(CYCLE_TIME,DEV_PARAM),
 	DEFINE_FLOAT_PARAM(SYSTEM_CYCLE,DEV_PARAM),
-	DEFINE_UINT_PARAM(FTL_READ_QUEUE_LENGTH,DEV_PARAM),
+	DEFINE_UINT_PARAM(FTL_QUEUE_LENGTH,DEV_PARAM),
 	DEFINE_UINT_PARAM(CTRL_READ_QUEUE_LENGTH,DEV_PARAM),
-	DEFINE_UINT_PARAM(FTL_WRITE_QUEUE_LENGTH,DEV_PARAM),
 	DEFINE_UINT_PARAM(CTRL_WRITE_QUEUE_LENGTH,DEV_PARAM),
 	DEFINE_DOUBLE_PARAM(READ_I,DEV_PARAM),
 	DEFINE_DOUBLE_PARAM(WRITE_I,DEV_PARAM),
@@ -471,7 +457,8 @@ namespace NVDSim
 		    if (configMap[i].iniKey.compare((std::string)"EPOCH_TIME") == 0 ||
 			configMap[i].iniKey.compare((std::string)"FTL_QUEUE_LENGTH") == 0 ||
 			configMap[i].iniKey.compare((std::string)"CTRL_QUEUE_LENGTH") == 0 ||
-			configMap[i].iniKey.compare((std::string)"WRITE_QUEUE_LIMIT") == 0)
+			configMap[i].iniKey.compare((std::string)"WRITE_QUEUE_LIMIT") == 0 ||
+		      configMap[i].iniKey.compare((std::string)"PERCENT_DIRTY") == 0)
 		    {
 			*((uint *)configMap[i].variablePtr) = 0;
 			DEBUG("\tSetting Default: "<<configMap[i].iniKey<<"=0");
@@ -510,65 +497,6 @@ namespace NVDSim
 	}
 	return true;
     }
-    /*unecessary right now
-      void Init::InitEnumsFromStrings() {
-      if (ADDRESS_MAPPING_SCHEME == "scheme1") {
-      addressMappingScheme = Scheme1;
-      DEBUG("ADDR SCHEME: 1");
-      } else if (ADDRESS_MAPPING_SCHEME == "scheme2") {
-      addressMappingScheme = Scheme2;
-      DEBUG("ADDR SCHEME: 2");
-      } else if (ADDRESS_MAPPING_SCHEME == "scheme3") {
-      addressMappingScheme = Scheme3;
-      DEBUG("ADDR SCHEME: 3");
-      } else if (ADDRESS_MAPPING_SCHEME == "scheme4") {
-      addressMappingScheme = Scheme4;
-      DEBUG("ADDR SCHEME: 4");
-      } else if (ADDRESS_MAPPING_SCHEME == "scheme5") {
-      addressMappingScheme = Scheme5;
-      DEBUG("ADDR SCHEME: 5");
-      } else if (ADDRESS_MAPPING_SCHEME == "scheme6") {
-      addressMappingScheme = Scheme6;
-      DEBUG("ADDR SCHEME: 6");
-      } else {
-      cout << "WARNING: unknown address mapping scheme '"<<ADDRESS_MAPPING_SCHEME<<"'; valid values are 'scheme1', 'scheme2', 'scheme3', 'scheme4', 'scheme5'. Defaulting to scheme1"<<endl;
-      addressMappingScheme = Scheme1;
-      }
-      
-      if (ROW_BUFFER_POLICY == "open_page") {
-      rowBufferPolicy = OpenPage;
-      DEBUG("ROW BUFFER: open page");
-      } else if (ROW_BUFFER_POLICY == "close_page") {
-      rowBufferPolicy = ClosePage;
-      DEBUG("ROW BUFFER: close page");
-      } else {
-      cout << "WARNING: unknown row buffer policy '"<<ROW_BUFFER_POLICY<<"'; valid values are 'open_page' or 'close_page', Defaulting to Close Page."<<endl;
-      rowBufferPolicy = ClosePage;
-      }
-      
-      if (QUEUING_STRUCTURE == "per_rank_per_bank") {
-      queuingStructure = PerRankPerBank;
-      DEBUG("QUEUING STRUCT: per rank per bank");
-      } else if (QUEUING_STRUCTURE == "per_rank") {
-      queuingStructure = PerRank;
-      DEBUG("QUEUING STRUCT: per rank");
-      } else {
-      cout << "WARNING: Unknown queueing structure '"<<QUEUING_STRUCTURE<<"'; valid options are 'per_rank' and 'per_rank_per_bank', defaulting to Per Rank Per Bank"<<endl;
-      queuingStructure = PerRankPerBank;
-      }
-
-      if (SCHEDULING_POLICY == "rank_then_bank_round_robin") {
-      schedulingPolicy = RankThenBankRoundRobin;
-      DEBUG("SCHEDULING: Rank Then Bank");
-      } else if (SCHEDULING_POLICY == "bank_then_rank_round_robin") {
-      schedulingPolicy = BankThenRankRoundRobin;
-      DEBUG("SCHEDULING: Bank Then Rank");
-      } else {
-      cout << "WARNING: Unknown scheduling policy '"<<SCHEDULING_POLICY<<"'; valid options are 'rank_then_bank_round_robin' or 'bank_then_rank_round_robin'; defaulting to Bank Then Rank Round Robin" << endl;
-      schedulingPolicy = BankThenRankRoundRobin;
-      }
-      
-      }*/
 
 #if 0
     // Wrote it, but did not use it -- might be handy in the future
