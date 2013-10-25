@@ -45,16 +45,9 @@ using namespace std;
 GCFtl::GCFtl(Controller *c, Logger *l, NVDIMM *p) 
     : Ftl(c, l, p)
 {	
-        int numBlocks = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * BLOCKS_PER_PLANE;
-
-	used_page_count = 0;
 	gc_status = 0;
 	panic_mode = 0;
 
-	dirty_page_count = 0;
-
-	dirty = vector<vector<bool>>(numBlocks, vector<bool>(PAGES_PER_BLOCK, false));
-	
 	gcQueue = list<FlashTransaction>();
 
 	// set up internal pointer to make sure that the gc isn't always erasing the same block
@@ -78,6 +71,7 @@ bool GCFtl::addTransaction(FlashTransaction &t){
 		return attemptAdd(t, &transQueue, FTL_QUEUE_LENGTH);
 	    }
 	}
+	return false;
     }
     ERROR("Tried to add a transaction with a virtual address that was out of bounds");
     exit(5001);
@@ -160,6 +154,7 @@ void GCFtl::update(void){
 					result = controller->addPacket(commandPacket);
 					if(result == true)
 					{
+					    cout << "ERASED \n";
 					    for (i = 0 ; i < PAGES_PER_BLOCK ; i++){
 						if (dirty[vAddr / BLOCK_SIZE][i]){
 							dirty[vAddr / BLOCK_SIZE][i] = false;
@@ -259,7 +254,7 @@ void GCFtl::write_used_handler(uint64_t vAddr)
 }
 
 bool GCFtl::checkGC(void){
-	// Return true if more than 70% of blocks are in use and false otherwise.
+	// Return true if more than 70% of blocks are dirty and false otherwise.
         if ((float)used_page_count > ((float)IDLE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE)))
 		return true;
 	return false;
@@ -365,21 +360,6 @@ void GCFtl::addGC(uint64_t dirty_block)
      }
 }
 
-void GCFtl::popFront(ChannelPacketType type)
-{
-    // if its a gc operation pop from the gc queue
-    if(type == ERASE || type == GC_READ || type == GC_WRITE)
-    {
-	gcQueue.pop_front();
-    }
-    // we're putting everything into the transaction queue, just pop from there
-    // unless its a gc operation then pop from the gcQueue
-    else
-    {
-	transQueue.pop_front();
-    }
-}
-
 void GCFtl::sendQueueLength(void)
 {
 	if(LOGGING == true)
@@ -388,173 +368,6 @@ void GCFtl::sendQueueLength(void)
 	}
 }
 
-void GCFtl::saveNVState(void)
-{
-     if(ENABLE_NV_SAVE && !saved)
-    {
-	ofstream save_file;
-	save_file.open(NV_SAVE_FILE, ios_base::out | ios_base::trunc);
-	if(!save_file)
-	{
-	    cout << "ERROR: Could not open NVDIMM state save file: " << NV_SAVE_FILE << "\n";
-	    abort();
-	}
-	
-	cout << "NVDIMM is saving the used table, dirty table and address map \n";
-
-	// save the address map
-	save_file << "AddressMap \n";
-	std::unordered_map<uint64_t, uint64_t>::iterator it;
-	for (it = addressMap.begin(); it != addressMap.end(); it++)
-	{
-	    save_file << (*it).first << " " << (*it).second << " \n";
-	}
-
-        // save the dirty table
-	save_file << "Dirty \n";
-	for(uint i = 0; i < dirty.size(); i++)
-	{
-	    for(uint j = 0; j < dirty[i].size(); j++)
-	    {
-		save_file << dirty[i][j] << " ";
-	    }
-	    save_file << "\n";
-	}
-
-	// save the used table
-	save_file << "Used";
-	for(uint i = 0; i < used.size(); i++)
-	{
-	    save_file << "\n";
-	    for(uint j = 0; j < used[i].size()-1; j++)
-	    {
-		save_file << used[i][j] << " ";
-	    }
-	    save_file << used[i][used[i].size()-1];
-	}
-
-	save_file.close();
-	saved = true;
-    }
-}
-
-void GCFtl::loadNVState(void)
-{
-    if(ENABLE_NV_RESTORE && !loaded)
-    {
-	ifstream restore_file;
-	restore_file.open(NV_RESTORE_FILE);
-	if(!restore_file)
-	{
-	    cout << "ERROR: Could not open NVDIMM restore file: " << NV_RESTORE_FILE << "\n";
-	    abort();
-	}
-
-	cout << "NVDIMM is restoring the system from file " << NV_RESTORE_FILE <<"\n";
-
-	// restore the data
-	uint64_t doing_used = 0;
-	uint64_t doing_dirty = 0;
-	uint64_t doing_addresses = 0;
-	uint64_t row = 0;
-	uint64_t column = 0;
-	uint64_t first = 0;
-	uint64_t key = 0;
-	uint64_t pAddr = 0;
-	uint64_t vAddr = 0;
-
-	std::unordered_map<uint64_t,uint64_t> tempMap;
-
-	std::string temp;
-	
-	while(!restore_file.eof())
-	{ 
-	    restore_file >> temp;
-	    
-	    // these comparisons make this parser work but they are dependent on the ordering of the data in the state file
-	    // if the state file changes these comparisons may also need to be changed
-	    if(temp.compare("Used") == 0)
-	    {
-		doing_used = 1;
-		doing_addresses = 0;
-		doing_dirty = 0;
-		
-		row = 0;
-		column = 0;
-	    }
-	    else if(temp.compare("Dirty") == 0)
-	    {
-		doing_used = 0;
-		doing_dirty = 1;
-		doing_addresses = 0;
-		
-		row = 0;
-		column = 0;
-	    }
-	    else if(temp.compare("AddressMap") == 0)
-	    {
-		doing_used = 0;
-		doing_dirty = 0;
-		doing_addresses = 1;
-
-		row = 0;
-		column = 0;
-	    }
-	    // restore used data
-	    else if(doing_used == 1)
-	    {
-		used[row][column] = convert_uint64_t(temp);
-
-                // this page was used need to issue fake write
-		if(temp.compare("1") == 0 && dirty[row][column] != 1)
-		{
-		    pAddr = (row * BLOCK_SIZE + column * NV_PAGE_SIZE);
-		    vAddr = tempMap[pAddr];
-		    ChannelPacket *tempPacket = Ftl::translate(FAST_WRITE, vAddr, pAddr);
-		    controller->writeToPackage(tempPacket);
-
-		    used_page_count++;
-		}		
-
-		column++;
-		if(column >= PAGES_PER_BLOCK)
-		{
-		    row++;
-		    column = 0;
-		}
-	    }
-	    // restore dirty data
-	    else if(doing_dirty == 1)
-	    {
-		dirty[row][column] = convert_uint64_t(temp);
-		column++;
-		if(column >= PAGES_PER_BLOCK)
-		{
-		    row++;
-		    column = 0;
-		}
-	    }
-	    // restore address map data
-	    else if(doing_addresses == 1)
-	    {	
-		if(first == 0)
-		{
-		    first = 1;
-		    key = convert_uint64_t(temp);
-		}
-		else
-		{
-		    addressMap[key] = convert_uint64_t(temp);
-		    tempMap[convert_uint64_t(temp)] = key;
-		    first = 0;
-		}
-	    }   
-	}
-
-	restore_file.close();
-	loaded = true;
-    }
-}
 
 void GCFtl::GCReadDone(uint64_t vAddr)
 {

@@ -66,14 +66,16 @@ namespace NVDSim{
 			uint64_t get_ptr(void); 
 			void inc_ptr(void); 
 
-			virtual void popFrontTransaction();
+			void popFrontTransaction();
 
 			void sendQueueLength(void);
 			
 			void powerCallback(void);
 
-			virtual void saveNVState(void);
-			virtual void loadNVState(void);
+			void preDirty(void);
+
+			void saveNVState(void);
+			void loadNVState(void);
 
 			void queuesNotFull(void);
 			void flushWriteQueues(void);
@@ -111,11 +113,13 @@ namespace NVDSim{
 			uint64_t deadlock_time;
 			uint64_t write_counter;
 			uint64_t used_page_count;
+			uint64_t dirty_page_count;
 			uint64_t write_wait_count;
 			std::list<FlashTransaction>::iterator read_pointer; // stores location of the last place we tried in the read queue
 
 			bool saved;
 			bool loaded;
+			bool dirtied;
 			bool ctrl_write_queues_full;
 			bool ctrl_read_queues_full;
 			bool flushing_write;
@@ -126,6 +130,7 @@ namespace NVDSim{
 
 			std::unordered_map<uint64_t,uint64_t> addressMap;
 			std::vector<vector<bool>> used;
+			std::vector<vector<bool>> dirty;
 			std::list<FlashTransaction> transQueue; 
 	};
 }

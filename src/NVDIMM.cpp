@@ -274,6 +274,8 @@ namespace NVDSim
 	}
 	
 	ftl->loadNVState();
+	
+	ftl->preDirty();
     }
 
 // static allocator for the library interface

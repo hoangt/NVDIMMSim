@@ -124,7 +124,7 @@ extern bool CUT_THROUGH;
 extern uint64_t IN_BUFFER_SIZE;
 extern uint64_t OUT_BUFFER_SIZE;
 
-// Critical Cache Line First Options 
+// Critical Cache Line First Options
 extern bool CRIT_LINE_FIRST;
 
 // Logging Options

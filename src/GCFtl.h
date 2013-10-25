@@ -61,12 +61,7 @@ namespace NVDSim{
 			void runGC(uint64_t plane);
 			void addGC(uint64_t dirty_block);
 
-			void popFront(ChannelPacketType type);
-
 			void sendQueueLength(void);
-
-			void saveNVState(void);
-			void loadNVState(void);
 
 			void GCReadDone(uint64_t vAddr);
 
@@ -88,10 +83,6 @@ namespace NVDSim{
 			    }
 			};
 			std::list<PendingErase> gc_pending_erase;  
-
-			uint64_t dirty_page_count;
-
-			std::vector<vector<bool>> dirty;
 			std::list<FlashTransaction> gcQueue;
 	};
 }
