@@ -71,9 +71,9 @@ namespace NVDSim
 			static void SetKey(string key, string value, bool isSystemParam = false, size_t lineNumber = 0);
 			static void OverrideKeys(vector<string> keys, vector<string> values);
 			static void ReadIniFile(string filename, bool isSystemParam);
-			//static void InitEnumsFromStrings();
 			static bool CheckIfAllSet();
 			static void WriteValuesOut(std::ofstream &visDataOut);
+			static void EnumsFromStrings();
 		private:
 			static void Trim(string &str);
 	};

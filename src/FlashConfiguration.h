@@ -100,6 +100,14 @@
 
 namespace NVDSim{
 
+enum WearLevelingScheme
+{
+    RoundRobin,
+    DirectTranslation,
+    FineGrained,
+    StartGap
+};
+
 // constants
 #define BITS_PER_KB 8192
 
@@ -111,6 +119,10 @@ extern bool IDLE_WRITE;
 extern bool DELAY_WRITE;
 extern uint DELAY_WRITE_CYCLES;
 extern bool FTL_QUEUE_HANDLING;
+
+// Wear Leveling Options
+extern std::string WEAR_LEVELING_SCHEME;
+extern WearLevelingScheme wearLevelingScheme;
 
 // SSD Options
 extern bool DISK_READ;

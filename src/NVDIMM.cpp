@@ -72,6 +72,8 @@ namespace NVDSim
 	 {
 		 exit(-1);
 	 }
+
+	Init::EnumsFromStrings();
 	
 	BLOCKS_PER_PLANE = (uint64_t)(VIRTUAL_BLOCKS_PER_PLANE * PBLOCKS_PER_VBLOCK);
 	if(LOGGING == 1)
@@ -103,6 +105,26 @@ namespace NVDSim
 	}else{
 	  PRINT("Memory channels are directly connected to dies");
 	}
+	
+	cout << wearLevelingScheme << "\n";
+	switch(wearLevelingScheme)
+	{
+	case RoundRobin:
+	    PRINT("Memory is using a round robin wear leveling scheme");
+	    break;
+	case DirectTranslation:
+	    PRINT("Memory is using a direct address translation wear leveling scheme");
+	    break;
+	case FineGrained:
+	    PRINT("Memory is using a fine grained wear leveling scheme");
+	    break;
+	case StartGap:
+	    PRINT("Memory is using the start gap wear leveling scheme");
+	    break;
+	default:
+	    break;
+	}
+
 	PRINT("\nTiming Info:\n");
 	PRINT("Read time: "<<READ_TIME);
 	PRINT("Write Time: "<<WRITE_TIME);

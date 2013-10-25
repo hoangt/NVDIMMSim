@@ -50,6 +50,8 @@ namespace NVDSim
     bool DISK_READ;
     bool FTL_QUEUE_HANDLING;
 
+    std::string WEAR_LEVELING_SCHEME;
+
     bool FRONT_BUFFER;
     uint64_t REQUEST_BUFFER_SIZE;
     uint64_t RESPONSE_BUFFER_SIZE;
@@ -133,6 +135,9 @@ namespace NVDSim
     float PBLOCKS_PER_VBLOCK;
     
     uint DEBUG_INIT= 0;
+
+    // Wear Leveling Enum
+    WearLevelingScheme wearLevelingScheme;
 		
     //Map the string names to the variables they set
     static ConfigMap configMap[] = {
@@ -145,6 +150,7 @@ namespace NVDSim
 	DEFINE_UINT_PARAM(DELAY_WRITE_CYCLES, DEV_PARAM),
 	DEFINE_BOOL_PARAM(DISK_READ, DEV_PARAM),
 	DEFINE_BOOL_PARAM(FTL_QUEUE_HANDLING, DEV_PARAM),
+	DEFINE_STRING_PARAM(WEAR_LEVELING_SCHEME, DEV_PARAM),
 	DEFINE_BOOL_PARAM(FRONT_BUFFER, DEV_PARAM),
 	DEFINE_UINT64_PARAM(REQUEST_BUFFER_SIZE, DEV_PARAM),
 	DEFINE_UINT64_PARAM(RESPONSE_BUFFER_SIZE, DEV_PARAM),
@@ -496,6 +502,31 @@ namespace NVDSim
 	    }
 	}
 	return true;
+    }
+
+    void Init::EnumsFromStrings()
+    {
+	if(WEAR_LEVELING_SCHEME == "round_robin")
+	{
+	    wearLevelingScheme = RoundRobin;
+	}
+	else if(WEAR_LEVELING_SCHEME == "direct_translation")
+	{
+	    wearLevelingScheme = DirectTranslation;
+	}
+	else if(WEAR_LEVELING_SCHEME == "fine_grained")
+	{
+	    wearLevelingScheme = FineGrained;
+	}
+	else if(WEAR_LEVELING_SCHEME == "start_gap")
+	{
+	    wearLevelingScheme = StartGap;
+	}
+	else
+	{
+	    cout << "WARNING: unknown wear leveling policy '"<<WEAR_LEVELING_SCHEME<<"'; valid values are 'round_robin', 'direct_translation', 'fine_grained', and 'start_gap'. Defaulting to round_robin \n";
+	    wearLevelingScheme = RoundRobin;
+	}
     }
 
 #if 0
