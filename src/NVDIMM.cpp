@@ -115,12 +115,6 @@ namespace NVDSim
 	case DirectTranslation:
 	    PRINT("Memory is using a direct address translation wear leveling scheme");
 	    break;
-	case FineGrained:
-	    PRINT("Memory is using a fine grained wear leveling scheme");
-	    break;
-	case StartGap:
-	    PRINT("Memory is using the start gap wear leveling scheme");
-	    break;
 	default:
 	    break;
 	}

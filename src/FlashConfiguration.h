@@ -103,9 +103,7 @@ namespace NVDSim{
 enum WearLevelingScheme
 {
     RoundRobin,
-    DirectTranslation,
-    FineGrained,
-    StartGap
+    DirectTranslation
 };
 
 // constants

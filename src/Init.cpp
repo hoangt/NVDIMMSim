@@ -514,17 +514,9 @@ namespace NVDSim
 	{
 	    wearLevelingScheme = DirectTranslation;
 	}
-	else if(WEAR_LEVELING_SCHEME == "fine_grained")
-	{
-	    wearLevelingScheme = FineGrained;
-	}
-	else if(WEAR_LEVELING_SCHEME == "start_gap")
-	{
-	    wearLevelingScheme = StartGap;
-	}
 	else
 	{
-	    cout << "WARNING: unknown wear leveling policy '"<<WEAR_LEVELING_SCHEME<<"'; valid values are 'round_robin', 'direct_translation', 'fine_grained', and 'start_gap'. Defaulting to round_robin \n";
+	    cout << "WARNING: unknown wear leveling policy '"<<WEAR_LEVELING_SCHEME<<"'; valid values are 'round_robin' and 'direct_translation'. Defaulting to round_robin \n";
 	    wearLevelingScheme = RoundRobin;
 	}
     }
