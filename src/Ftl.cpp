@@ -80,9 +80,6 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	write_counter = 0;
 	used_page_count = 0;
 
-	// Counter to keep track of how long we've been access data in the write queue
-	queue_access_counter = 0;
-
 	// Counter to keep track of cycles we spend waiting on erases
 	// if we wait longer than the length of an erase, we've probably deadlocked
 	deadlock_counter = 0;
@@ -165,29 +162,46 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
     }
     else if(t.transactionType == DATA_WRITE)
     {
-	// see if this write replaces another already in the write queue
-	// if it does remove that other write from the queue
+	// see if this write replaces another already in the transaction queue
+        // also make sure that no read in the queue references the old write
+	// if both conditions hold remove the old write from the queue it is no longer neccessary
 	list<FlashTransaction>::iterator it;
 	int count = 0;
+	bool rw_conflict = false;
+	cout << "checking queue for depreciated writes \n";
 	for (it = transQueue.begin(); it != transQueue.end(); it++)
 	{
 	    // don't replace the write if we're already working on it
-	    if((*it).address == t.address && currentTransaction.address != t.address)
+	    if((*it).address == t.address && currentTransaction.address != t.address && (*it).transactionType == DATA_WRITE)
 	    {
-		if(LOGGING)
+	        list<FlashTransaction>::iterator it2;
+	        for(it2 = transQueue.begin(); it2 != it; it2++)
+	        {
+		    if((*it2).address == t.address && (*it2).transactionType == DATA_READ)
+		    {
+		        rw_conflict = true;
+			cout << "rw conflict detected!! \n";
+		        break;
+		    }
+		}
+		if(!rw_conflict)
 		{
-		    // access_process for that write is called here since its over now.
-		    log->access_process(t.address, t.address, 0, WRITE);
+		    if(LOGGING)
+		    {
+		        // access_process for that write is called here since its over now.
+		        log->access_process(t.address, t.address, 0, WRITE);
 		    
-		    // stop_process for that write is called here since its over now.
-		    log->access_stop(t.address, t.address);
+			// stop_process for that write is called here since its over now.
+			log->access_stop(t.address, t.address);
+		    }
+		    // issue a callback for this write
+		    if (parent->WriteDataDone != NULL){
+		        (*parent->WriteDataDone)(parent->systemID, (*it).address, currentClockCycle, true);
+		    }
+		    transQueue.erase(it);
+		    cout << "Replaced a write!! \n";
+		    break;
 		}
-		// issue a callback for this write
-		if (parent->WriteDataDone != NULL){
-		    (*parent->WriteDataDone)(parent->systemID, (*it).address, currentClockCycle, true);
-		}
-		transQueue.erase(it);
-		break;
 	    }
 	    count++;
 	}
@@ -361,7 +375,6 @@ void Ftl::handle_disk_read(bool gc)
 		log->read_mapped();
 	    }
 	    popFrontTransaction();
-	    read_iterator_counter = 0;
 	    busy = 0;
 	    
 	}
@@ -380,128 +393,73 @@ void Ftl::handle_read(bool gc)
 {
     ChannelPacket *commandPacket;
     uint64_t vAddr = currentTransaction.address;
-    bool write_queue_handled = false;
-    //Check to see if the vAddr corresponds to the write waiting in the write queue
-    if(!gc && FTL_QUEUE_HANDLING)
+    // Check to see if the vAddr exists in the address map.
+    if (addressMap.find(vAddr) == addressMap.end())
     {
-	// first time here, find a write in the write queue that can satisfy this read
-	if(queue_access_counter == 0)
+	if (gc)
 	{
-	    for (reading_write = transQueue.begin(); reading_write != transQueue.end(); reading_write++)
-	    {
-		if((*reading_write).address == vAddr)
-		{
-		    queue_access_counter = QUEUE_ACCESS_TIME;
-		    write_queue_handled = true;
-		    if(LOGGING)
-		    {
-
-			// Update the logger.
-			log->read_mapped();
-
-			// access_process for this read is called here since it starts here
-			log->access_process(vAddr, vAddr, 0, READ);
-		    }
-		}
-	    }
+	    ERROR("GC tried to move data that wasn't there.");
+	    exit(1);
 	}
-	// we found a write the satisfy the read, now we're waiitng to get the data out of the queue
-	else if(queue_access_counter > 0)
+	
+	// if we are disk reading then we want to map an unmapped read and treat is normally
+	if(DISK_READ)
 	{
-	    queue_access_counter--;
-	    write_queue_handled = true;
-	    // if we're done waiting for the data to come out of the queue, then this read is finished
-	    if(queue_access_counter == 0)
+	    handle_disk_read(gc);
+	}
+	else
+	{
+	    
+	    // If not, then this is an unmapped read.
+	    // We return a fake result immediately.
+	    // In the future, this could be an error message if we want.
+	    if(LOGGING)
 	    {
-		if(LOGGING)
-		{
-		    // stop_process for this read is called here since this ends now.
-		    log->access_stop(vAddr, vAddr);
-		}
-
-		controller->returnReadData(FlashTransaction(RETURN_DATA, vAddr, (*reading_write).data));
+		// Update the logger
+		log->read_unmapped();
 		
-		if(LOGGING && QUEUE_EVENT_LOG)
-		{
-		    log->log_ftl_queue_event(false, &transQueue);
-		}
-		popFrontTransaction();
-		read_iterator_counter = 0;
-		busy = 0;
+		// access_process for this read is called here since this ends now.
+		log->access_process(vAddr, vAddr, 0, READ);
+		
+		// stop_process for this read is called here since this ends now.
+		log->access_stop(vAddr, vAddr);
 	    }
+	    
+	    // Miss, nothing to read so return garbage.
+	    controller->returnUnmappedData(FlashTransaction(RETURN_DATA, vAddr, (void *)0xdeadbeef));
+	    
+	    popFrontTransaction();
+	    busy = 0;
 	}
-    }
-    // if we couldn't find a write to satisfy this read
-    if(!write_queue_handled)
-    {
-        // Check to see if the vAddr exists in the address map.
-	if (addressMap.find(vAddr) == addressMap.end())
+    } 
+    else 
+    {	
+	ChannelPacketType read_type;
+	if (gc)
+	  read_type = GC_READ;
+	else
+	  read_type = READ;
+	commandPacket = Ftl::translate(read_type, vAddr, addressMap[vAddr]);
+	
+	//send the read to the controller
+	bool result = controller->addPacket(commandPacket);
+	if(result)
 	{
-		if (gc)
-		{
-			ERROR("GC tried to move data that wasn't there.");
-			exit(1);
-		}
-
-		// if we are disk reading then we want to map an unmapped read and treat is normally
-		if(DISK_READ)
-		{
-		    handle_disk_read(gc);
-		}
-		else
-		{
-
-		    // If not, then this is an unmapped read.
-		    // We return a fake result immediately.
-		    // In the future, this could be an error message if we want.
-		    if(LOGGING)
-		    {
-			// Update the logger
-			log->read_unmapped();
-			
-			// access_process for this read is called here since this ends now.
-			log->access_process(vAddr, vAddr, 0, READ);
-
-			// stop_process for this read is called here since this ends now.
-			log->access_stop(vAddr, vAddr);
-		    }
-
-		    // Miss, nothing to read so return garbage.
-		    controller->returnUnmappedData(FlashTransaction(RETURN_DATA, vAddr, (void *)0xdeadbeef));
-	       
-		    popFrontTransaction();
-		    busy = 0;
-		}
-	} 
-	else 
-	{	
-		ChannelPacketType read_type;
-		if (gc)
-			read_type = GC_READ;
-		else
-			read_type = READ;
-		commandPacket = Ftl::translate(read_type, vAddr, addressMap[vAddr]);
-
-		//send the read to the controller
-		bool result = controller->addPacket(commandPacket);
-		if(result)
-		{
-			if(LOGGING && !gc)
-			{
-				// Update the logger (but not for GC_READ).
-				log->read_mapped();
-			}
-			popFrontTransaction();
-			busy = 0;
-    
-		}
-		else
-		{
-			// Delete the packet if it is not being used to prevent memory leaks.
-			delete commandPacket;
-			ctrl_write_queues_full = true;	
-			log->locked_up(currentClockCycle);
-		}
+	    if(LOGGING && !gc)
+	    {
+		// Update the logger (but not for GC_READ).
+		log->read_mapped();
+	    }
+	    popFrontTransaction();
+	    busy = 0;
+	    
+	}
+	else
+	{
+	    // Delete the packet if it is not being used to prevent memory leaks.
+	    delete commandPacket;
+	    ctrl_write_queues_full = true;	
+	    log->locked_up(currentClockCycle);
 	}
     }
 }
