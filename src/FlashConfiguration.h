@@ -103,6 +103,7 @@ namespace NVDSim{
 enum WearLevelingScheme
 {
     RoundRobin,
+    StartGap,
     DirectTranslation
 };
 
@@ -121,6 +122,9 @@ extern bool FTL_QUEUE_HANDLING;
 // Wear Leveling Options
 extern std::string WEAR_LEVELING_SCHEME;
 extern WearLevelingScheme wearLevelingScheme;
+extern uint GAP_WRITE_INTERVAL;
+
+extern bool PRESET;
 
 // SSD Options
 extern bool DISK_READ;

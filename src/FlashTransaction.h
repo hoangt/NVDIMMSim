@@ -53,6 +53,8 @@ namespace NVDSim
 		GC_DATA_WRITE,
 		RETURN_DATA,
 		BLOCK_ERASE,
+		TRIM,
+		PRESET,
 		EMPTY
 	};
 

@@ -62,9 +62,14 @@ namespace NVDSim{
 			void handle_read(bool gc);
 			virtual void write_used_handler(uint64_t vAddr);
 			void write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t pAddr, bool gc, bool mapped);
+			write_locaiton next_write_location(uint64_t vAddr);
+			write_location round_robin_write_location(uint64_t vAddr);
+			bool gap_movement(void);
+			void handle_gap_write(void);
+			write_location start_gap_write_location(uint64_t vAddr);
+			write_location static_write_location(uint64_t vAddr);
 			void handle_write(bool gc);
-			uint64_t address_lookup(uint64_t vAddr);
-			uint64_t next_write_location(uint64_t vAddr);
+			void handle_trim(void);
 			uint64_t get_ptr(void); 
 			void inc_ptr(void); 
 
@@ -125,10 +130,23 @@ namespace NVDSim{
 			bool ctrl_write_queues_full;
 			bool ctrl_read_queues_full;
 
+			// start gap variables
+			uint64_t start;
+			uint64_t gap;
+			bool pending_gap_read;
+			bool pending_gap_write;
+			uint64_t gap_write_vAddr;
+
 			std::unordered_map<uint64_t,uint64_t> addressMap;
 			std::vector<vector<bool>> used;
 			std::vector<vector<bool>> dirty;
 			std::list<FlashTransaction> transQueue; 
+
+			struct write_location
+			{
+			    uint64_t address;
+			    bool done;
+			}
 	};
 }
 #endif

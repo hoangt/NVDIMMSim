@@ -180,7 +180,11 @@ void GCFtl::update(void){
 					    delete commandPacket;
 					    ctrl_write_queues_full = true;
 					}
-					break;		
+					break;	
+	
+			        case TRIM:	
+				       handle_trim();
+				       break;
 
 				default:
 					ERROR("Transaction in Ftl that isn't a read or write... What?");

@@ -95,6 +95,13 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	deadlock_time += ERASE_TIME + ((divide_params(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME);
 
 	write_wait_count = DELAY_WRITE_CYCLES;
+
+	// start gap variables
+	start = 0;
+	gap = (numBlocks * PAGES_PER_BLOCK)-1;
+	pending_gap_read = false;
+	pending_gap_write = false;
+	gap_write_vAddr = 0;
 }
 
 ChannelPacket *Ftl::translate(ChannelPacketType type, uint64_t vAddr, uint64_t pAddr){
@@ -148,19 +155,7 @@ bool Ftl::attemptAdd(FlashTransaction &t, std::list<FlashTransaction> *queue, ui
 
 bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 {
-    if(t.transactionType == DATA_READ || t.transactionType == BLOCK_ERASE)
-    {
-	bool success =  attemptAdd(t, &transQueue, FTL_QUEUE_LENGTH);
-	if (success == true)
-	{
-	    if( transQueue.size() == 1)
-	    {
-		read_pointer = transQueue.begin();
-	    }
-	}
-	return success;
-    }
-    else if(t.transactionType == DATA_WRITE)
+    if(t.transactionType == DATA_WRITE)
     {
 	// see if this write replaces another already in the transaction queue
         // also make sure that no read in the queue references the old write
@@ -209,6 +204,18 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 	// always have room for this write
 	return attemptAdd(t, &transQueue, FTL_QUEUE_LENGTH);
     }
+    else
+    {
+	bool success =  attemptAdd(t, &transQueue, FTL_QUEUE_LENGTH);
+	if (success == true)
+	{
+	    if( transQueue.size() == 1)
+	    {
+		read_pointer = transQueue.begin();
+	    }
+	}
+	return success;
+    }
     return false;
 }
 
@@ -244,10 +251,19 @@ void Ftl::update(void){
 				    }
 				    break;
 				}
+
 				case DATA_WRITE: 
 					handle_write(false);
 					break;
 
+			        case TRIM:
+				        handle_trim();
+				        break;
+
+			        case PRESET:
+				        handle_preset();
+				        break;				        
+				    
 				default:
 					ERROR("FTL received an illegal transaction type:" << currentTransaction.transactionType);
 					break;
@@ -470,7 +486,9 @@ void Ftl::write_used_handler(uint64_t vAddr)
 		// want to reuse this block for something at some later time so mark it as unused because it is
 		used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
 
-		cout << "USING FTL's WRITE_USED_HANDLER!!!\n";
+		used_page_count--;
+
+		//cout << "USING FTL's WRITE_USED_HANDLER!!!\n";
 }
 
 void Ftl::write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t pAddr, bool gc, bool mapped)
@@ -502,14 +520,166 @@ void Ftl::write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t 
     addressMap[vAddr] = pAddr;
 }
 
+write_location Ftl::next_write_location(uint64_t vAddr)
+{
+    if(WearLevelingScheme == RoundRobin)
+    {
+	return round_robin_write_location(vAddr);
+    }
+    else if(WearLevelingScheme == StartGap)
+    {
+	return start_gap_write_location(vAddr);
+    }
+    else
+    {
+    }
+}
+    
+write_location Ftl::round_robin_write_location(uint64_t vAddr)
+{
+    uint64_t start;
+    uint64_t pAddr;
+    bool done = false;
+    uint64_t block, page, tmp_block, tmp_page;
+    write_location loc;
+
+    //look for first free physical page starting at the write pointer
+    start = BLOCKS_PER_PLANE * (temp_plane + PLANES_PER_DIE * (temp_die + DIES_PER_PACKAGE * temp_channel));
+	    
+    // Search from the current write pointer to the end of the flash for a free page.
+    for (block = start ; block < TOTAL_SIZE / BLOCK_SIZE && !done; block++)
+    {
+	for (page = 0 ; page < PAGES_PER_BLOCK  && !done ; page++)
+	{
+	    if (!used[block][page] && !dirty[block][page])
+	    {
+		tmp_block = block;
+		tmp_page = page;
+		pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
+		done = true;
+	    }
+	}
+    }
+    block = tmp_block;
+    page = tmp_page;
+    
+    // If we didn't find a free page after scanning to the end. Scan from the beginning
+    // to the write pointer
+    if (!done)
+    {							
+	for (block = 0 ; block < start / BLOCK_SIZE && !done; block++)
+	{
+	    for (page = 0 ; page < PAGES_PER_BLOCK  && !done; page++)
+	    {
+		if (!used[block][page] && !dirty[block][page])
+		{
+		    tmp_block = block;
+		    tmp_page = page;
+		    pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
+		    done = true;
+		}
+	    }
+	}
+	block = tmp_block;
+	page = tmp_page;
+    }
+
+    loc.address = pAddr;
+    loc.done = done;
+    return loc;
+}
+
+bool Ftl::gap_movement(void)
+{
+    FlashTransaction trans;
+    uint64_t vAddr;
+
+    // schedule a read to pull the currend data at the new gap location
+    // reusing the GC transaction type to keep stuff simple here since we want to treat this
+    // transfer the same way we would the transfers involved in a GC operation
+    trans = FlashTransaction(GC_DATA_READ, vAddr, NULL);
+    
+    if(gap == 0 )
+    {
+	// reverse address lookup
+	// we know that gap will be less than N so no need to modulo
+	vAddr = gap-start;
+	if(vAddr >= gap)
+	    vAddr = vAddr-1;
+
+	dataPacket = Ftl::translate(DATA, vAddr, pAddr);
+	commandPacket = Ftl::translate(write_type, vAddr, pAddr);
+	
+	// Check to see if there is enough room for both packets in the queue (need two open spots).
+	bool queue_open = controller->checkQueueWrite(dataPacket);
+    }
+    else
+    {
+	
+	gap--;
+    }
+}
+
+void Ftl::handle_gap_write(void)
+{
+    ChannelPacket *commandPacket, *dataPacket;
+
+    dataPacket = Ftl::translate(DATA, gap_write_vAddr, gap);
+    commandPacket = Ftl::translate(GC_WRITE, gap_write_vAddr, gap);
+
+    // Check to see if there is enough room for both packets in the queue (need two open spots).
+    bool queue_open = controller->checkQueueWrite(dataPacket);
+    
+    // no room so we can't place the write there right now
+    if (!queue_open)
+    {
+	// These packets are not being used. Since they were dynamically allocated, we must delete them to prevent
+	// memory leaks.
+	delete dataPacket;
+	delete commandPacket;
+	pending_gap_write = true;
+    }
+    // had room, place the write
+    else if (queue_open)
+    {
+	// Add the packets to the controller queue.
+	// Do not need to check the return values for these since checkQueueWrite() was called.
+	controller->addPacket(dataPacket);
+	controller->addPacket(commandPacket);
+	
+	if(gap == 0)
+	{
+	    gap = (numBlocks * PAGES_PER_BLOCK)-1;
+	}
+	else
+	{
+	    gap = gap - 1;
+	}
+    }
+}
+
+write_location Ftl::start_gap_write_location(uint64_t vAddr)
+{
+    // if its time to adjust the gap then do so
+    if(write_counter%GAP_WRITE_INTERVAL == 0)
+    {
+	
+    }
+}
+
+write_location Ftl::static_write_location(uint64_t vAddr)
+{
+    
+}
+
 void Ftl::handle_write(bool gc)
 {
     uint64_t start;
     uint64_t vAddr = currentTransaction.address, pAddr;
     ChannelPacket *commandPacket, *dataPacket;
     bool done = false;
-    bool finished = false;
-    uint64_t block, page, tmp_block, tmp_page;
+    uint64_t block, page;
+    write_location loc;
 
     temp_channel = channel;
     temp_die = die;
@@ -521,122 +691,90 @@ void Ftl::handle_write(bool gc)
 
     if (addressMap.find(vAddr) != addressMap.end())
     {
-	write_used_handler(vAddr);
-	
-	mapped = true;
+	if(WearLevelingScheme == DirectTranslation)
+	{
+	    pAddr = addressMap[vAddr];	
+	    block = pAddr / BLOCK_SIZE;
+	    page = (pAddr / NV_PAGE_SIZE) % PAGES_PER_BLOCK;
+	    done = true;
+	}
+	else
+	{
+	    write_used_handler(vAddr);
+	}
+	mapped = true;	
+    }
+
+    if (mapped == false || WearLevelingScheme != DirectTranslation)
+    {
+        loc = write_location(vAddr);
+	pAddr = loc.address;
+	done = loc.done;
     }
 	    
-    while(!finished)
-    { 	    
-        //look for first free physical page starting at the write pointer
-        start = BLOCKS_PER_PLANE * (temp_plane + PLANES_PER_DIE * (temp_die + DIES_PER_PACKAGE * temp_channel));
-	    
-	// Search from the current write pointer to the end of the flash for a free page.
-	for (block = start ; block < TOTAL_SIZE / BLOCK_SIZE && !done; block++)
+    if (!done)
+    {
+	deadlock_counter++;
+	if(deadlock_counter == deadlock_time)
 	{
-	    for (page = 0 ; page < PAGES_PER_BLOCK  && !done ; page++)
-	    {
-	        if (!used[block][page])
-		{
-		    tmp_block = block;
-		    tmp_page = page;
-		    pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
-		    done = true;
-		}
-	    }
+	    //bad news
+	    cout << deadlock_time;
+	    ERROR("FLASH DIMM IS COMPLETELY FULL AND DEADLOCKED - If you see this, something has gone horribly wrong.");
+	    exit(9001);
 	}
-	block = tmp_block;
-	page = tmp_page;
-	//attemptWrite(start, &vAddr, &pAddr, &done);
-	    
-	    
-	// If we didn't find a free page after scanning to the end. Scan from the beginning
-	// to the write pointer
-	if (!done)
-	{							
-	    for (block = 0 ; block < start / BLOCK_SIZE && !done; block++)
-	    {
-	        for (page = 0 ; page < PAGES_PER_BLOCK  && !done; page++)
-		{
-		    if (!used[block][page])
-		    {
-		        tmp_block = block;
-			tmp_page = page;
-			pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
-			done = true;
-		    }
-		}
-	    }
-	    block = tmp_block;
-	    page = tmp_page;
-	}
-	    
-	if (!done)
-	{
-	    deadlock_counter++;
-	    if(deadlock_counter == deadlock_time)
-	    {
-	        //bad news
-	        cout << deadlock_time;
-		ERROR("FLASH DIMM IS COMPLETELY FULL AND DEADLOCKED - If you see this, something has gone horribly wrong.");
-		exit(9001);
-	    }
-	} 
-	else 
-	{
-	    // We've found a used page. Now we need to try to add the transaction to the Controller queue.
-		
-	    // first things first, we're no longer in danger of dead locking so reset the counter
-	    deadlock_counter = 0;
-		
-	    //send write to controller
-		
-	    ChannelPacketType write_type;
-	    if (gc)
-	        write_type = GC_WRITE;
-	    else
-	        write_type = WRITE;
-	    dataPacket = Ftl::translate(DATA, vAddr, pAddr);
-	    commandPacket = Ftl::translate(write_type, vAddr, pAddr);
-	    
-	    // Check to see if there is enough room for both packets in the queue (need two open spots).
-	    bool queue_open = controller->checkQueueWrite(dataPacket);
-		    
-	    // no room so we can't place the write there right now
-	    if (!queue_open)
-	    {
-	        // These packets are not being used. Since they were dynamically allocated, we must delete them to prevent
-	        // memory leaks.
-	        delete dataPacket;
-		delete commandPacket;
-		    
-		finished = true;
-		ctrl_write_queues_full = true;
-
-	    }
-	    // had room, place the write
-	    else if (queue_open)
-	    {
-	        // Add the packets to the controller queue.
-	        // Do not need to check the return values for these since checkQueueWrite() was called.
-	        controller->addPacket(dataPacket);
-		controller->addPacket(commandPacket);	    
-			
-		// made this a function cause the code was repeated a bunch of places
-		write_success(block, page, vAddr, pAddr, gc, mapped);
+    } 
+    else 
+    {
+	// We've found a used page. Now we need to try to add the transaction to the Controller queue.
 	
-		// if we are using the real write pointer, then update it
-		if(itr_count == 0)
-		{
-		    //update "write pointer"
-		    channel = (channel + 1) % NUM_PACKAGES;
-		    if (channel == 0){
-		        die = (die + 1) % DIES_PER_PACKAGE;
-			if (die == 0)
-			    plane = (plane + 1) % PLANES_PER_DIE;
-		    }
+	// first things first, we're no longer in danger of dead locking so reset the counter
+	deadlock_counter = 0;
+	
+	//send write to controller
+	
+	ChannelPacketType write_type;
+	if (gc)
+	    write_type = GC_WRITE;
+	else
+	    write_type = WRITE;
+	dataPacket = Ftl::translate(DATA, vAddr, pAddr);
+	commandPacket = Ftl::translate(write_type, vAddr, pAddr);
+	
+	// Check to see if there is enough room for both packets in the queue (need two open spots).
+	bool queue_open = controller->checkQueueWrite(dataPacket);
+	
+	// no room so we can't place the write there right now
+	if (!queue_open)
+	{
+	    // These packets are not being used. Since they were dynamically allocated, we must delete them to prevent
+	    // memory leaks.
+	    delete dataPacket;
+	    delete commandPacket;
+	    
+	    ctrl_write_queues_full = true;
+	    
+	}
+	// had room, place the write
+	else if (queue_open)
+	{
+	    // Add the packets to the controller queue.
+	    // Do not need to check the return values for these since checkQueueWrite() was called.
+	    controller->addPacket(dataPacket);
+	    controller->addPacket(commandPacket);	    
+	    
+	    // made this a function cause the code was repeated a bunch of places
+	    write_success(block, page, vAddr, pAddr, gc, mapped);
+	    
+	    // if we are using the real write pointer, then update it
+	    if(itr_count == 0)
+	    {
+		//update "write pointer"
+		channel = (channel + 1) % NUM_PACKAGES;
+		if (channel == 0){
+		    die = (die + 1) % DIES_PER_PACKAGE;
+		    if (die == 0)
+			plane = (plane + 1) % PLANES_PER_DIE;
 		}
-		finished = true;
 	    }
 	}
     }
@@ -646,6 +784,24 @@ uint64_t Ftl::get_ptr(void) {
 	// Return a pointer to the current plane.
 	return NV_PAGE_SIZE * PAGES_PER_BLOCK * BLOCKS_PER_PLANE * 
 		(plane + PLANES_PER_DIE * (die + NUM_PACKAGES * channel));
+}
+
+void Ftl::handle_trim(void)
+{
+        uint64_t vAddr = currentTransaction.address;
+
+	// this page has been identified as no longer in use, so mark it as such
+	used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
+	
+	// Pop the transaction from the transaction queue.
+	popFrontTransaction();
+	
+	// The FTL is no longer busy.
+	busy = 0;
+}
+
+void Ftl::handle_preset(void)
+{
 }
 
 void Ftl::popFrontTransaction()
@@ -888,7 +1044,11 @@ void Ftl::queuesNotFull(void)
     locked_counter = 0;
 }
 
+// handles the gap movement read complete
+// once the read is done, we create a write for that data and send it
 void Ftl::GCReadDone(uint64_t vAddr)
-{
-    // an empty fucntion to make the compiler happy
+{    
+    pending_gap_read = false;
+    gap_write_vAddr = vAddr;
+    handle_gap_write();
 }

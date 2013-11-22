@@ -48,7 +48,6 @@ Controller::Controller(NVDIMM* parent, Logger* l){
 
 	readQueues = vector<vector<list <ChannelPacket *> > >(NUM_PACKAGES, vector<list<ChannelPacket *> >(DIES_PER_PACKAGE, list<ChannelPacket * >()));
 	writeQueues = vector<vector<list <ChannelPacket *> > >(NUM_PACKAGES, vector<list<ChannelPacket *> >(DIES_PER_PACKAGE, list<ChannelPacket * >()));
-	//writeQueues = vector<list <ChannelPacket *> >(DIES_PER_PACKAGE, list<ChannelPacket *>());
 	outgoingPackets = vector<ChannelPacket *>(NUM_PACKAGES, 0);
 
 	pendingPackets = vector<list <ChannelPacket *> >(NUM_PACKAGES, list<ChannelPacket *>());
@@ -213,40 +212,10 @@ bool Controller::addPacket(ChannelPacket *p){
         case WRITE:
         case DATA:
 	     if ((writeQueues[p->package][p->die].size() < CTRL_WRITE_QUEUE_LENGTH) || (CTRL_WRITE_QUEUE_LENGTH == 0))
-	     {
-		 // search the write queue to check if this write overwrites some other write
-		 // this should really only happen if we're doing in place writing though (no gc)
-		 if(!GARBAGE_COLLECT)
-		 {
-		     list<ChannelPacket *>::iterator it;
-		     for (it = writeQueues[p->package][p->die].begin(); it != writeQueues[p->package][p->die].end(); it++)
-		     {
-			 if((*it)->virtualAddress == p->virtualAddress && (*it)->busPacketType == p->busPacketType)
-			 {
-			     if(LOGGING)
-			     {		
-				 // access_process for that write is called here since its over now.
-				 log->access_process((*it)->virtualAddress, (*it)->physicalAddress, (*it)->package, WRITE);
-				 
-				 // stop_process for that write is called here since its over now.
-				 log->access_stop((*it)->virtualAddress, (*it)->physicalAddress);
-			     }
-			     //call write callback
-			     if (parentNVDIMM->WriteDataDone != NULL){
-				 (*parentNVDIMM->WriteDataDone)(parentNVDIMM->systemID, (*it)->virtualAddress, currentClockCycle,true);
-			     }
-			     writeQueues[(*it)->package][(*it)->die].erase(it, it++);
-			     break;
-			 }
-		     }   
-		 }
 		 writeQueues[p->package][p->die].push_back(p);
-		 break;
-	     }
 	     else
-	     {
-		 return false;
-	     }
+	         return false;
+	     break;
 	case GC_READ:
 	case GC_WRITE:
 	    // Try to push the gc stuff to the front of the read queue in order to give them priority
@@ -327,7 +296,6 @@ void Controller::update(void){
     // schedule the next operation for each die
     if(SCHEDULE)
     {
-	bool write_queue_handled = false;
 	uint64_t i;	
 	//loop through the channels to find a packet for each
 	for (i = 0; i < NUM_PACKAGES; i++)
@@ -337,10 +305,8 @@ void Controller::update(void){
 	    done = 0;
 	    while (!done)
 	    {
-		// do we need to issue a write
-		// *** NOTE: We need to review this write condition for out new design ***
-		if((WRITE_ON_QUEUE_SIZE == true && writeQueues[i][die_pointers[i]].size() >= WRITE_QUEUE_LIMIT)) //||
-		    //(CTRL_WRITE_ON_QUEUE_SIZE == false && writeQueues[i][die_pointers[i]].size() >= CTRL_WRITE_QUEUE_LENGTH-1))
+		// do we need to issue an emergency write
+		if((WRITE_ON_QUEUE_SIZE == true && writeQueues[i][die_pointers[i]].size() >= WRITE_QUEUE_LIMIT))
 		{
 		    if (!writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
 			//if we can get the channel
@@ -378,92 +344,40 @@ void Controller::update(void){
 			    done = nextDie(i);
 			}
 		    }
-		    // this queue is empty, move on
+		    // this queue is empty but it shouldn't be
 		    else
 		    {
-			done = nextDie(i);
+		      ERROR("Empty queue was identified initially as too full, something weird happened")
 		    }
 		}
 		// if we don't have to issue a write check to see if there is a read to send
 		// we're reusing the same die pointer for reads and writes because if a die was just given a read or write
 		// it can't do anything else with it so the die counters sort've act like a dies in use marker
 		else if (!readQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
-		    if(queue_access_counter == 0 && readQueues[i][die_pointers[i]].front()->busPacketType != GC_READ && 
-		       readQueues[i][die_pointers[i]].front()->busPacketType != GC_WRITE && !writeQueues[i][die_pointers[i]].empty())
-		    {
-			//see if this read can be satisfied by something in the write queue
-			list<ChannelPacket *>::iterator it;
-			for (it = writeQueues[i][die_pointers[i]].begin(); it != writeQueues[i][die_pointers[i]].end(); it++)
+		  //if we can get the channel
+		    if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, readQueues[i][die_pointers[i]].front())){
+		        outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
+			if(LOGGING && QUEUE_EVENT_LOG)
 			{
-			    if((*it)->virtualAddress == readQueues[i][die_pointers[i]].front()->virtualAddress)
-			    {
-				if(LOGGING)
-				{		
-				    // access_process for the read we're satisfying  is called here since we're doing it here.
-				    log->access_process(readQueues[i][die_pointers[i]].front()->virtualAddress, readQueues[i][die_pointers[i]].front()->physicalAddress, 
-							readQueues[i][die_pointers[i]].front()->package, READ);
-				}
-				queue_access_counter = QUEUE_ACCESS_TIME;
-				write_queue_handled = true;
-				break;
-				// done for now with this channel and die but don't advance the die counter
-				// cause we have to get through the queue access counter for it
-				done = 1;
-			    }
+			    log->log_ctrl_queue_event(false, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
 			}
+			readQueues[i][die_pointers[i]].pop_front();
+			parentNVDIMM->queuesNotFull();
+		    
+			channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+			// managed to place something so we're done with this channel
+			// advance the die pointer since this die is now busy
+			die_pointers[i]++;
+			if (die_pointers[i] >= DIES_PER_PACKAGE)
+			{
+			    die_pointers[i] = 0;
+		        }
+			done = 1;
 		    }
-		    else if(queue_access_counter > 0)
+		    // couldn't get the channel so go to the next die
+		    else
 		    {
-			queue_access_counter--;
-			write_queue_handled = true;
-			if(queue_access_counter == 0)
-			{
-			    if(LOGGING)
-			    {
-				// stop_process for this read is called here since this ends now.
-				log->access_stop(readQueues[i][die_pointers[i]].front()->virtualAddress, readQueues[i][die_pointers[i]].front()->virtualAddress);
-			    }
-			    
-			    returnReadData(FlashTransaction(RETURN_DATA, readQueues[i][die_pointers[i]].front()->virtualAddress, readQueues[i][die_pointers[i]].front()->data));
-			    readQueues[i][die_pointers[i]].pop_front();
-			    parentNVDIMM->queuesNotFull();
-			    // managed to place something so we're done with this channel
-			    // advance the die pointer since this die is now busy
-			    die_pointers[i]++;
-			    if (die_pointers[i] >= DIES_PER_PACKAGE)
-			    {
-				die_pointers[i] = 0;
-			    }
-			    done = 1;
-			}
-		    }
-		    else if(!write_queue_handled)
-		    {
-			//if we can get the channel
-			if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, readQueues[i][die_pointers[i]].front())){
-			    outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
-			    if(LOGGING && QUEUE_EVENT_LOG)
-			    {
-				log->log_ctrl_queue_event(false, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
-			    }
-			    readQueues[i][die_pointers[i]].pop_front();
-			    parentNVDIMM->queuesNotFull();
-			    
-			    channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
-			    // managed to place something so we're done with this channel
-			    // advance the die pointer since this die is now busy
-			    die_pointers[i]++;
-			    if (die_pointers[i] >= DIES_PER_PACKAGE)
-			    {
-				die_pointers[i] = 0;
-			    }
-			    done = 1;
-			}
-			// couldn't get the channel so go to the next die
-			else
-			{
-			    done = nextDie(i);
-			}
+		        done = nextDie(i);
 		    }
 		}
 		// if there are no reads to send see if we're allowed to send a write instead
