@@ -64,8 +64,8 @@ namespace NVDSim{
 			void write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t pAddr, bool gc, bool mapped);
 			write_locaiton next_write_location(uint64_t vAddr);
 			write_location round_robin_write_location(uint64_t vAddr);
-			bool gap_movement(void);
-			void handle_gap_write(void);
+			void gap_movement(void);
+			void handle_gap_write(uint64_t write_vAddr);
 			write_location start_gap_write_location(uint64_t vAddr);
 			write_location static_write_location(uint64_t vAddr);
 			void handle_write(bool gc);
@@ -124,10 +124,10 @@ namespace NVDSim{
 			uint64_t write_wait_count;
 			std::list<FlashTransaction>::iterator read_pointer; // stores location of the last place we tried in the read queue
 
-			bool saved;
-			bool loaded;
-			bool dirtied;
-			bool ctrl_write_queues_full;
+			bool saved; // indicates that state data has been successfully saved to make sure we don't do it twice
+			bool loaded; // indicates that state data has been successfully loaded to make sure we don't do it twice
+			bool dirtied; // indicates that the NVM has been predirtied to simulate a used NVM
+			bool ctrl_write_queues_full; // these let us know when we can't push anything more out to the controller
 			bool ctrl_read_queues_full;
 
 			// start gap variables
@@ -135,7 +135,8 @@ namespace NVDSim{
 			uint64_t gap;
 			bool pending_gap_read;
 			bool pending_gap_write;
-			uint64_t gap_write_vAddr;
+			bool gap_moving;
+			uint64_t gap_write_vAddr; // we save this in case the ctrl queues are full and we need to reuse it		  
 
 			std::unordered_map<uint64_t,uint64_t> addressMap;
 			std::vector<vector<bool>> used;
