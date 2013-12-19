@@ -43,7 +43,7 @@ using namespace NVDSim;
 using namespace std;
 
 Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
-	int numBlocks = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * BLOCKS_PER_PLANE;
+	numBlocks = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * BLOCKS_PER_PLANE;
 
 	channel = 0;
 	die = 0;
@@ -164,7 +164,7 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 	list<FlashTransaction>::iterator it;
 	int count = 0;
 	bool rw_conflict = false;
-	cout << "checking queue for depreciated writes \n";
+	//cout << "checking queue for depreciated writes \n";
 	for (it = transQueue.begin(); it != transQueue.end(); it++)
 	{
 	    // don't replace the write if we're already working on it
@@ -176,7 +176,7 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 		    if((*it2).address == t.address && (*it2).transactionType == DATA_READ)
 		    {
 		        rw_conflict = true;
-			cout << "rw conflict detected!! \n";
+			//cout << "rw conflict detected!! \n";
 		        break;
 		    }
 		}
@@ -195,7 +195,7 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 		        (*parent->WriteDataDone)(parent->systemID, (*it).address, currentClockCycle, true);
 		    }
 		    transQueue.erase(it);
-		    cout << "Replaced a write!! \n";
+		    //cout << "Replaced a write!! \n";
 		    break;
 		}
 	    }
@@ -262,7 +262,7 @@ void Ftl::update(void){
 				        handle_trim();
 				        break;
 
-			        case PRESET:
+			        case PRESET_PAGE:
 				        handle_preset();
 				        break;				        
 				    
@@ -506,7 +506,7 @@ void Ftl::write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t 
 	
     // Update the write counter.
     write_counter++;
-    //cout << "WRITE COUNTER IS " << write_counter << "\n";
+    cout << "WRITE COUNTER IS " << write_counter << "\n";
 	
 	
     if (LOGGING && !gc)
@@ -523,32 +523,29 @@ void Ftl::write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t 
 
 write_location Ftl::next_write_location(uint64_t vAddr)
 {
-    if(WearLevelingScheme == RoundRobin)
-    {
-	return round_robin_write_location(vAddr);
-    }
-    else if(WearLevelingScheme == StartGap)
+    if(wearLevelingScheme == StartGap)
     {
 	return start_gap_write_location(vAddr);
     }
     else
     {
+	return round_robin_write_location(vAddr);
     }
 }
     
 write_location Ftl::round_robin_write_location(uint64_t vAddr)
 {
-    uint64_t start;
+    uint64_t addr_start;
     uint64_t pAddr;
     bool done = false;
     uint64_t block, page, tmp_block, tmp_page;
     write_location loc;
 
     //look for first free physical page starting at the write pointer
-    start = BLOCKS_PER_PLANE * (temp_plane + PLANES_PER_DIE * (temp_die + DIES_PER_PACKAGE * temp_channel));
+    addr_start = BLOCKS_PER_PLANE * (temp_plane + PLANES_PER_DIE * (temp_die + DIES_PER_PACKAGE * temp_channel));
 	    
     // Search from the current write pointer to the end of the flash for a free page.
-    for (block = start ; block < TOTAL_SIZE / BLOCK_SIZE && !done; block++)
+    for (block = addr_start ; block < TOTAL_SIZE / BLOCK_SIZE && !done; block++)
     {
 	for (page = 0 ; page < PAGES_PER_BLOCK  && !done ; page++)
 	{
@@ -586,6 +583,8 @@ write_location Ftl::round_robin_write_location(uint64_t vAddr)
     }
 
     loc.address = pAddr;
+    loc.block = block;
+    loc.page = page;
     loc.done = done;
     return loc;
 }
@@ -594,6 +593,7 @@ write_location Ftl::round_robin_write_location(uint64_t vAddr)
 // space and so cannot be an internal die operation
 void Ftl::gap_movement(void)
 {
+    cout << "moving that gap \n";
     FlashTransaction trans;
     uint64_t vAddr;
    
@@ -624,7 +624,7 @@ void Ftl::gap_movement(void)
     pending_gap_read = true;
 }
 
-void Ftl::handle_gap_write(unit64_t write_vAddr)
+void Ftl::handle_gap_write(uint64_t write_vAddr)
 {
     ChannelPacket *commandPacket, *dataPacket;
 
@@ -675,14 +675,12 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
     write_location loc;
 
     // if its time to adjust the gap then do so if we're not already taking care of it
-    if(write_counter%GAP_WRITE_INTERVAL == 0 && !gap_moving)
+    if(write_counter != 0 && write_counter%GAP_WRITE_INTERVAL == 0 && !gap_moving)
     {
 	gap_moving = true;
 	// start the gap movement process
 	gap_movement();
     }
-    // gap write failed last time we tried to write it, try again
-    else if(pending_gap_write)
 
     // get the address
     // this will use the old gap placement while gap movement is taking place as the start
@@ -694,19 +692,20 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
 	pAddr = pAddr + 1;
     }
     
+    cout << vAddr + start << "\n";
+    cout << (numBlocks * PAGES_PER_BLOCK)-1 << "\n";
+    cout << (vAddr + start) % ((numBlocks * PAGES_PER_BLOCK)-1) << "\n";
+    cout << "start gap v address is " << vAddr << "\n";
+    cout << "start gap p address is " << pAddr << "\n";
     loc.address = pAddr;
-    loc.done = done;
+    loc.block = pAddr / BLOCK_SIZE;
+    loc.page = (pAddr / NV_PAGE_SIZE) % PAGES_PER_BLOCK;
+    loc.done = true;
     return loc;
-}
-
-write_location Ftl::static_write_location(uint64_t vAddr)
-{
-    
 }
 
 void Ftl::handle_write(bool gc)
 {
-    uint64_t start;
     uint64_t vAddr = currentTransaction.address, pAddr;
     ChannelPacket *commandPacket, *dataPacket;
     bool done = false;
@@ -723,7 +722,7 @@ void Ftl::handle_write(bool gc)
 
     if (addressMap.find(vAddr) != addressMap.end())
     {
-	if(WearLevelingScheme == DirectTranslation)
+	if(wearLevelingScheme == DirectTranslation)
 	{
 	    pAddr = addressMap[vAddr];	
 	    block = pAddr / BLOCK_SIZE;
@@ -738,12 +737,15 @@ void Ftl::handle_write(bool gc)
     }
 
     // find the next location for this write
-    if (mapped == false || WearLevelingScheme != DirectTranslation)
+    if (mapped == false || wearLevelingScheme != DirectTranslation)
     {
 	// calling the appropriate next location scheme
         loc = next_write_location(vAddr);
 	// gettting all the useful information
 	pAddr = loc.address;
+	block = loc.block;
+	page = loc.page;
+	cout << "write handler p address is " << pAddr << "\n";
 	done = loc.done;
     }
 	    
@@ -1091,8 +1093,9 @@ void Ftl::queuesNotFull(void)
 // once the read is done, we create a write for that data and send it
 void Ftl::GCReadDone(uint64_t vAddr)
 {   
-    if(WearLevelingScheme == StartGap && pending_gap_read)
+    if(wearLevelingScheme == StartGap && pending_gap_read)
     {
+	cout << "gap read completed \n";
 	pending_gap_read = false;
 	gap_write_vAddr = vAddr;
 	handle_gap_write(vAddr);

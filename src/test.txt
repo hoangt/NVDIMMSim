@@ -1,0 +1,590 @@
+WARNING: KEY PRESET NOT FOUND IN INI FILE.
+	Setting Default: PRESET=false
+1
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 1
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 2
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 3
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 4
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 5
+moving that gap 
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 6
+[Callback] read complete: 1 10 cycle=67594 mapped=1
+[Callback] write complete: 1 10 cycle=11909
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 7
+[Callback] read complete: 1 11 cycle=139527 mapped=1
+[Callback] write complete: 1 11 cycle=23817
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 8
+[Callback] read complete: 1 12 cycle=211452 mapped=1
+[Callback] write complete: 1 12 cycle=35725
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 9
+[Callback] read complete: 1 10 cycle=283377 mapped=1
+[Callback] write complete: 1 10 cycle=47633
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 10
+[Callback] read complete: 1 11 cycle=355302 mapped=1
+[Callback] write complete: 1 11 cycle=59541
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 11
+[Callback] read complete: 1 12 cycle=427226 mapped=1
+[Callback] write complete: 1 12 cycle=71449
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 12
+[Callback] read complete: 1 10 cycle=499151 mapped=1
+[Callback] write complete: 1 10 cycle=83357
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 13
+[Callback] read complete: 1 11 cycle=571076 mapped=1
+[Callback] write complete: 1 11 cycle=95265
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 14
+[Callback] read complete: 1 12 cycle=643001 mapped=1
+[Callback] write complete: 1 12 cycle=107173
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 15
+[Callback] read complete: 1 10 cycle=714925 mapped=1
+[Callback] write complete: 1 10 cycle=119081
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 16
+[Callback] read complete: 1 11 cycle=786850 mapped=1
+[Callback] write complete: 1 11 cycle=130989
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 17
+[Callback] read complete: 1 12 cycle=858775 mapped=1
+[Callback] write complete: 1 12 cycle=142897
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 18
+[Callback] read complete: 1 10 cycle=930699 mapped=1
+[Callback] write complete: 1 10 cycle=154805
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 19
+[Callback] read complete: 1 11 cycle=1002624 mapped=1
+[Callback] write complete: 1 11 cycle=166713
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 20
+[Callback] read complete: 1 12 cycle=1074549 mapped=1
+[Callback] write complete: 1 12 cycle=178621
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 21
+[Callback] read complete: 1 10 cycle=1146474 mapped=1
+[Callback] write complete: 1 10 cycle=190529
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 22
+[Callback] read complete: 1 11 cycle=1218398 mapped=1
+[Callback] write complete: 1 11 cycle=202437
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 23
+[Callback] read complete: 1 12 cycle=1290323 mapped=1
+[Callback] write complete: 1 12 cycle=214345
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 24
+[Callback] read complete: 1 10 cycle=1362248 mapped=1
+[Callback] write complete: 1 10 cycle=226253
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 25
+[Callback] read complete: 1 11 cycle=1434173 mapped=1
+[Callback] write complete: 1 11 cycle=238161
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+[Callback] read complete: 1 12 cycle=1480639 mapped=1
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 26
+[Callback] write complete: 1 12 cycle=250069
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+[Callback] read complete: 1 10 cycle=1552564 mapped=1
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 27
+[Callback] write complete: 1 10 cycle=261977
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+[Callback] read complete: 1 11 cycle=1624488 mapped=1
+10
+15
+10
+start gap v address is 10
+start gap p address is 10
+write handler p address is 10
+WRITE COUNTER IS 28
+[Callback] write complete: 1 11 cycle=273885
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+[Callback] read complete: 1 12 cycle=1696413 mapped=1
+11
+15
+11
+start gap v address is 11
+start gap p address is 11
+write handler p address is 11
+WRITE COUNTER IS 29
+[Callback] write complete: 1 12 cycle=285793
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+[Callback] read complete: 1 10 cycle=1768338 mapped=1
+12
+15
+12
+start gap v address is 12
+start gap p address is 12
+write handler p address is 12
+WRITE COUNTER IS 30
+[Callback] write complete: 1 10 cycle=297701
+[Callback] read complete: 1 11 cycle=1840263 mapped=1
+[Callback] write complete: 1 11 cycle=309609
+[Callback] read complete: 1 12 cycle=1912187 mapped=1
+[Callback] write complete: 1 12 cycle=321517
+[Callback] read complete: 1 10 cycle=1984112 mapped=1
+[Callback] write complete: 1 10 cycle=333425
+[Callback] read complete: 1 11 cycle=2056037 mapped=1
+[Callback] write complete: 1 11 cycle=345333
+[Callback] read complete: 1 12 cycle=2127961 mapped=1
+Simulation Results:
+Cycles simulated: 352309
+Reads completed: 30
+Writes completed: 29
+
+Power Data: 
+========================
+Package: 0
+Accumulated Idle Energy: 0.000140445mJ
+Accumulated Access Energy: 0.000353414mJ
+Total Energy: 0.000493859mJ
+
+Average Idle Power: 0.264mW
+Average Access Power: 0.664328mW
+Average Power: 0.928328mW
+
+Execution time: 1100000 cycles. 1.1 seconds.

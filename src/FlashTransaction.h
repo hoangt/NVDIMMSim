@@ -54,7 +54,7 @@ namespace NVDSim
 		RETURN_DATA,
 		BLOCK_ERASE,
 		TRIM,
-		PRESET,
+		PRESET_PAGE,
 		EMPTY
 	};
 

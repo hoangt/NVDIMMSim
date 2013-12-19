@@ -469,7 +469,8 @@ namespace NVDSim
 			configMap[i].iniKey.compare((std::string)"FTL_QUEUE_LENGTH") == 0 ||
 			configMap[i].iniKey.compare((std::string)"CTRL_QUEUE_LENGTH") == 0 ||
 			configMap[i].iniKey.compare((std::string)"WRITE_QUEUE_LIMIT") == 0 ||
-		      configMap[i].iniKey.compare((std::string)"PERCENT_DIRTY") == 0)
+			configMap[i].iniKey.compare((std::string)"PERCENT_DIRTY") == 0 ||
+			configMap[i].iniKey.compare((std::string)"GAP_WRITE_INTERVAL") == 0)
 		    {
 			*((uint *)configMap[i].variablePtr) = 0;
 			DEBUG("\tSetting Default: "<<configMap[i].iniKey<<"=0");

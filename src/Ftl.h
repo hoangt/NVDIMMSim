@@ -48,8 +48,17 @@
 #include "Util.h"
 
 namespace NVDSim{
+        typedef struct 
+	{
+	    uint64_t address;
+	    uint64_t block;
+	    uint64_t page;
+	    bool done;
+	} write_location;
+
         class NVDIMM;
 	class Ftl : public SimObj{
+
 		public:
 	                Ftl(Controller *c, Logger *l, NVDIMM *p);
 
@@ -62,14 +71,14 @@ namespace NVDSim{
 			void handle_read(bool gc);
 			virtual void write_used_handler(uint64_t vAddr);
 			void write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t pAddr, bool gc, bool mapped);
-			write_locaiton next_write_location(uint64_t vAddr);
+			write_location next_write_location(uint64_t vAddr);
 			write_location round_robin_write_location(uint64_t vAddr);
 			void gap_movement(void);
 			void handle_gap_write(uint64_t write_vAddr);
 			write_location start_gap_write_location(uint64_t vAddr);
-			write_location static_write_location(uint64_t vAddr);
 			void handle_write(bool gc);
 			void handle_trim(void);
+			void handle_preset(void);
 			uint64_t get_ptr(void); 
 			void inc_ptr(void); 
 
@@ -99,7 +108,11 @@ namespace NVDSim{
 			uint64_t locked_counter;
 			// *************************************
 
+
+
 		protected:
+			int numBlocks;
+
 			std::ifstream scriptfile;
 			uint64_t write_cycle;
 			uint64_t write_addr;
@@ -143,11 +156,7 @@ namespace NVDSim{
 			std::vector<vector<bool>> dirty;
 			std::list<FlashTransaction> transQueue; 
 
-			struct write_location
-			{
-			    uint64_t address;
-			    bool done;
-			}
+			
 	};
 }
 #endif
