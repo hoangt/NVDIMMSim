@@ -139,6 +139,15 @@ bool Plane::checkCacheReg(void)
     return false;
 }
 
+bool Plane::checkDataReg(void)
+{
+    if(dataReg == NULL)
+    {
+	return true;
+    }
+    return false;
+}
+
 void Plane::dataGone(void)
 {
     // read no longer needs this register

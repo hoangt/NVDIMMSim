@@ -100,9 +100,24 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	start = 0;
 	gap = (numBlocks * PAGES_PER_BLOCK)-1; // gap is a physical address
 	pending_gap_read = false; // indicates that we're waiting on a read of the data from the new gap location
+	gap_read_delayed = false; // indicates that there was no room for the read and we will have to try again
 	pending_gap_write = false; // indicates that we were not successful in writing the data to the old gap 
 	                           // location and will have to try again
 	gap_moving = false; // indicates that we are currently moving the gap so we don't move it extra times
+	gap_moved = false; // indicates that we've moved the gap for this interation so we don't move it extra times
+	srand(time(NULL)); // initialize rand, I think random shuffle uses rand by default
+
+	// if randomized address space
+	if(RANDOM_ADDR)
+	{
+	    randomAddrs = vector<uint64_t>((numBlocks * PAGES_PER_BLOCK)-1);
+	    for(uint64_t i = 0; i < (numBlocks * PAGES_PER_BLOCK); i++)
+	    {
+		randomAddrs.push_back(i); // fill vector with all of the addresses
+	    }
+
+	    std::random_shuffle(randomAddrs.begin(), randomAddrs.end());
+	}
 }
 
 ChannelPacket *Ftl::translate(ChannelPacketType type, uint64_t vAddr, uint64_t pAddr){
@@ -221,7 +236,8 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 }
 
 bool Ftl::addTransaction(FlashTransaction &t){
-    if(t.address < (VIRTUAL_TOTAL_SIZE*1024))
+    // if we're using start gap then we have to exclude an extra page from the address space
+    if(t.address < (VIRTUAL_TOTAL_SIZE-((wearLevelingScheme == StartGap)?1:0)))
     {
 	// we are going to favor reads over writes
 	// so writes get put into a special lower prioirty queue
@@ -257,6 +273,38 @@ void Ftl::update(void){
 				case DATA_WRITE: 
 					handle_write(false);
 					break;
+
+				// GC type support added for Start Gap
+			        case GC_DATA_READ:
+				{
+				    // only correct if this arrives while we're using start gap
+				    if(wearLevelingScheme == StartGap)
+				    {
+                                        // right now we just lock up on a gc read if it doesn't go through
+				        handle_read(true);
+					break;
+				    }
+				    else
+				    {
+					ERROR("FTL received an illegal transaction type:" << currentTransaction.transactionType);
+					break;
+				    }
+				}
+
+				case GC_DATA_WRITE:
+				{
+				    // only correct if this arrives while we're using start gap
+				    if(wearLevelingScheme == StartGap)
+				    {
+					handle_write(true);
+					break;
+				    }
+				    else
+				    {
+					ERROR("FTL received an illegal transaction type:" << currentTransaction.transactionType);
+					break;
+				    }
+				}
 
 			        case TRIM:
 				        handle_trim();
@@ -508,7 +556,9 @@ void Ftl::write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t 
     write_counter++;
     cout << "WRITE COUNTER IS " << write_counter << "\n";
 	
-	
+    // we've updated the write counter so now its safe to reset the gap movement bool
+    gap_moved = false;
+
     if (LOGGING && !gc)
     {
 	if (mapped)
@@ -589,6 +639,29 @@ write_location Ftl::round_robin_write_location(uint64_t vAddr)
     return loc;
 }
 
+// this gap rotation code was copied in several places so it gets its own function
+void Ftl::gap_rotate(void)
+{
+    if(gap == 0)
+    {
+	cout << "start has been moved \n";
+	gap = (numBlocks * PAGES_PER_BLOCK)-1;
+	start = start + 1;
+	if(start >= (numBlocks * PAGES_PER_BLOCK)-1)
+	{
+	    start = 0;
+	}
+    }
+    else
+    {
+	gap = gap - 1;
+    }
+
+    gap_moving = false;
+    gap_moved = true;
+    cout << "gap has been moved \n";
+}
+
 // we are doing this at the FTL level because the gap can move across the entire physical memory
 // space and so cannot be an internal die operation
 void Ftl::gap_movement(void)
@@ -596,6 +669,7 @@ void Ftl::gap_movement(void)
     cout << "moving that gap \n";
     FlashTransaction trans;
     uint64_t vAddr;
+    ChannelPacket *commandPacket;
    
     // reverse address lookup
     if(gap == 0)
@@ -615,13 +689,43 @@ void Ftl::gap_movement(void)
 	    vAddr = vAddr-1;
     }
 
-    // schedule a read to pull the current data at the new gap location
-    // reusing the GC transaction type to keep stuff simple here since we want to treat this
-    // transfer the same way we would the transfers involved in a GC operation
-    trans = FlashTransaction(GC_DATA_READ, vAddr, NULL);
+    // Check to see if the vAddr exists in the address map.
+    if (addressMap.find(vAddr) == addressMap.end())
+    {
+	// if not then there was nothing to move and we're done here
+	gap_rotate();
+    }
+    // If we do need to move something, issue the appropriate command to the controller
+    else
+    {
+	// schedule a read to pull the current data at the new gap location
+	// reusing the GC transaction type to keep stuff simple here since we want to treat this
+	// transfer the same way we would the transfers involved in a GC operation
+	commandPacket = Ftl::translate(GC_READ, vAddr, addressMap[vAddr]);
 
-    // let everyone know that a read for the gap is pending
-    pending_gap_read = true;
+	// log this new thing
+	if(LOGGING)
+	{
+	    // Start the logging for this access.
+	    log->access_start(vAddr, GC_DATA_READ);
+	}
+	
+	//send the read to the controller
+	bool result = controller->addPacket(commandPacket);
+	if(result)
+	{
+	    // let everyone know that a read for the gap is pending
+	    pending_gap_read = true;
+	}
+	else
+	{
+	    // Delete the packet if it is not being used to prevent memory leaks.
+	    delete commandPacket;
+	    ctrl_write_queues_full = true;	
+	    log->locked_up(currentClockCycle);
+	    gap_read_delayed = true;
+	}
+    }
 }
 
 void Ftl::handle_gap_write(uint64_t write_vAddr)
@@ -648,34 +752,39 @@ void Ftl::handle_gap_write(uint64_t write_vAddr)
     // had room, place the write
     else if (queue_open)
     {
+	// log this new thing
+	if(LOGGING)
+	{
+	    // Start the logging for this access.
+	    log->access_start(write_vAddr, GC_DATA_WRITE);
+	}
+
 	// Add the packets to the controller queue.
 	// Do not need to check the return values for these since checkQueueWrite() was called.
 	controller->addPacket(dataPacket);
 	controller->addPacket(commandPacket);
 	
-	if(gap == 0)
-	{
-	    gap = (numBlocks * PAGES_PER_BLOCK)-1;
-	    start = start + 1;
-	    if(start >= (numBlocks * PAGES_PER_BLOCK)-1)
-	    {
-		start = 0;
-	    }
-	}
-	else
-	{
-	    gap = gap - 1;
-	}
+	gap_rotate();
     }
 }
 
 write_location Ftl::start_gap_write_location(uint64_t vAddr)
 {
-    uint64_t pAddr;
+    uint64_t pAddr, iAddr;
     write_location loc;
 
+    // if address space randomization is being used
+    if(RANDOM_ADDR)
+    {
+	iAddr = randomAddrs[vAddr]; // get our random address for this virtual address
+    }
+    else
+    {						
+	iAddr = vAddr;
+    }
+
     // if its time to adjust the gap then do so if we're not already taking care of it
-    if(write_counter != 0 && write_counter%GAP_WRITE_INTERVAL == 0 && !gap_moving)
+    if(write_counter != 0 && write_counter%GAP_WRITE_INTERVAL == 0 && !gap_moving && !gap_moved)
     {
 	gap_moving = true;
 	// start the gap movement process
@@ -686,16 +795,19 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
     // this will use the old gap placement while gap movement is taking place as the start
     // and gap values are only updated once the data has been safely moved from the new
     // gap location
-    pAddr = (vAddr + start) % ((numBlocks * PAGES_PER_BLOCK)-1);
+    pAddr = (iAddr + start) % ((numBlocks * PAGES_PER_BLOCK)-2);
     if(pAddr >= gap)
     {
 	pAddr = pAddr + 1;
     }
     
-    cout << vAddr + start << "\n";
-    cout << (numBlocks * PAGES_PER_BLOCK)-1 << "\n";
-    cout << (vAddr + start) % ((numBlocks * PAGES_PER_BLOCK)-1) << "\n";
+    cout << iAddr + start << "\n";
+    cout << (numBlocks * PAGES_PER_BLOCK)-2 << "\n";
+    cout << (iAddr + start) % ((numBlocks * PAGES_PER_BLOCK)-2) << "\n";
+    cout << "gap is " << gap << "\n";
+    cout << "start is " << start << "\n";
     cout << "start gap v address is " << vAddr << "\n";
+    cout << "start gap i address is " << iAddr << "\n";
     cout << "start gap p address is " << pAddr << "\n";
     loc.address = pAddr;
     loc.block = pAddr / BLOCK_SIZE;
@@ -1084,8 +1196,16 @@ void Ftl::queuesNotFull(void)
     // go ahead and try that again first
     if(pending_gap_write)
     {
-	handle_gap_write(gap_write_vAddr);
 	pending_gap_write = false;
+	handle_gap_write(gap_write_vAddr);
+    }
+    
+    // if we had been trying to read the data from the new gap location
+    // go ahead and try that again first
+    if(gap_read_delayed)
+    {
+	gap_read_delayed = false;
+	gap_movement();
     }
 }
 
@@ -1093,6 +1213,7 @@ void Ftl::queuesNotFull(void)
 // once the read is done, we create a write for that data and send it
 void Ftl::GCReadDone(uint64_t vAddr)
 {   
+    cout << "gc read done called \n";
     if(wearLevelingScheme == StartGap && pending_gap_read)
     {
 	cout << "gap read completed \n";

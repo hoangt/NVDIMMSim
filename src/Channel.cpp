@@ -60,12 +60,22 @@ int Channel::obtainChannel(uint s, SenderType t, ChannelPacket *p){
     {
 	cout << "something weird happened \n";
     }
+    // One of the most complex blocks in the program
+    // this decides if it is safe for the controller to send data or commands to a die
+    // we cannot send data or commands to a die that is busy or does not have the reg room for the data
+    // the different isDieBusy numbers correspond to different plane states, more information about this function
+    // and its return values can be found in Die.cpp
     if ((sender != -1) ||
 	(t == CONTROLLER && !BUFFERED && (buffer->dies[p->die]->isDieBusy(p->plane) == 1)) ||
 	// should allow us to send write data to a buffer that is currently writing
 	(t == CONTROLLER && !BUFFERED && p->busPacketType != DATA && buffer->dies[p->die]->isDieBusy(p->plane) == 2) ||
 	// should allow us to send a write command to a plane that has a loaded cache register
-	(t == CONTROLLER && !BUFFERED && p->busPacketType ==DATA && buffer->dies[p->die]->isDieBusy(p->plane) == 3) ||
+	(t == CONTROLLER && !BUFFERED && p->busPacketType == DATA && (buffer->dies[p->die]->isDieBusy(p->plane) == 3 ||
+								      buffer->dies[p->die]->isDieBusy(p->plane) == 5)) ||
+	// should keep us from sending a read command to a plane that has a loaded data register
+	 (t == CONTROLLER && !BUFFERED && (p->busPacketType == READ || p->busPacketType == GC_READ) && 
+	  (buffer->dies[p->die]->isDieBusy(p->plane) == 3 ||
+	   buffer->dies[p->die]->isDieBusy(p->plane) == 4)) ||
 	(busy == 1))
     {
 	return 0;		

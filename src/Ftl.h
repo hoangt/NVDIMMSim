@@ -39,6 +39,9 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <stdlib.h>
+#include <time.h>
+#include <algorithm>
 #include "SimObj.h"
 #include "FlashConfiguration.h"
 #include "ChannelPacket.h"
@@ -73,8 +76,10 @@ namespace NVDSim{
 			void write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t pAddr, bool gc, bool mapped);
 			write_location next_write_location(uint64_t vAddr);
 			write_location round_robin_write_location(uint64_t vAddr);
+			void gap_rotate(void);
 			void gap_movement(void);
 			void handle_gap_write(uint64_t write_vAddr);
+			uint64_t randomize_address_space(uint64_t vAddr);
 			write_location start_gap_write_location(uint64_t vAddr);
 			void handle_write(bool gc);
 			void handle_trim(void);
@@ -147,11 +152,16 @@ namespace NVDSim{
 			uint64_t start;
 			uint64_t gap;
 			bool pending_gap_read;
+			bool gap_read_delayed;
 			bool pending_gap_write;
 			bool gap_moving;
-			uint64_t gap_write_vAddr; // we save this in case the ctrl queues are full and we need to reuse it		  
+			bool gap_moved;
+			uint64_t gap_write_vAddr; // we save this in case the ctrl queues are full and we need to reuse it
+			std::unordered_map<uint64_t,uint64_t> randomMap; // address map for the randomized version of start-gap
+			std::vector<uint64_t> randomAddrs; // vector of scrambled addresses
+			
 
-			std::unordered_map<uint64_t,uint64_t> addressMap;
+			std::unordered_map<uint64_t,uint64_t> addressMap; // address map for translation
 			std::vector<vector<bool>> used;
 			std::vector<vector<bool>> dirty;
 			std::list<FlashTransaction> transQueue; 

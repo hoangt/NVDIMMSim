@@ -144,12 +144,24 @@ int Die::isDieBusy(uint64_t plane){
     // if we're sending, then we're buffering and the channel between the buffer and the die
     // is busy and data can't be sent to the die right now
     if (currentCommands[plane] == NULL && sending == false){
-	if(planes[plane].checkCacheReg() == true)
+	if(planes[plane].checkCacheReg() == true && planes[plane].checkDataReg() == true)
 	{
+	    // not currently doing anything and room in both regs
 	    return 0;
+	}
+	else if(planes[plane].checkDataReg() == false)
+	{
+	    // not currently doing anything but there is no room in the data reg
+	    return 4;
+	}
+	else if(planes[plane].checkCacheReg() == false)
+	{
+	    // not currently doing anything but there is no room in the cache reg
+	    return 5;
 	}
 	else
 	{
+	    // not currently doing anything but there is no room in either reg
 	    return 3;
 	}
     }
@@ -189,10 +201,15 @@ void Die::update(void){
 					    }
 					    break;
 					case GC_READ:
-					    if(returnDataPackets.size() <= PLANES_PER_DIE)
+					    if(planes[currentCommand->plane].checkCacheReg())
 					    {
 						returnDataPackets.push(planes[currentCommand->plane].readFromData());
 						parentNVDIMM->GCReadDone(currentCommand->virtualAddress);
+						no_reg_room = false;
+					    }
+					    else
+					    {
+						no_reg_room = true;
 					    }
 					    break;
 					case WRITE:	

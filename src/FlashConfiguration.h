@@ -123,6 +123,7 @@ extern bool FTL_QUEUE_HANDLING;
 extern std::string WEAR_LEVELING_SCHEME;
 extern WearLevelingScheme wearLevelingScheme;
 extern uint GAP_WRITE_INTERVAL;
+extern bool RANDOM_ADDR;
 
 extern bool PRESET;
 
