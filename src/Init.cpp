@@ -87,7 +87,7 @@ namespace NVDSim
     uint64_t PLANES_PER_DIE;
     uint64_t BLOCKS_PER_PLANE;
     uint64_t VIRTUAL_BLOCKS_PER_PLANE;
-    uint64_t PAGES_PER_BLOCK;
+    uint64_t PAGES_PER_BLOCK; // when in PCM mode this should always be 1 because pages are the erase granularity for PCM
     uint64_t NV_PAGE_SIZE;
     float DEVICE_CYCLE;
     uint64_t DEVICE_WIDTH;

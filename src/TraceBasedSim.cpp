@@ -47,8 +47,8 @@
 #include <time.h>
 #include "TraceBasedSim.h"
 
-#define NUM_WRITES 3000
-#define SIM_CYCLES 10000000000
+#define NUM_WRITES 200
+#define SIM_CYCLES 100000000000
 
 /*temporary assignments for externed variables.
  * This should really be done with another class
@@ -166,8 +166,8 @@ void test_obj::run_test(void){
 	
 	for (cycle= 0; cycle<SIM_CYCLES; cycle++){
 	  if(writes < NUM_WRITES && !waiting){
-	      t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
-	      result = (*NVDimm).add(t);
+	      //t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
+	      //result = (*NVDimm).add(t);
 	      t = FlashTransaction(DATA_WRITE, write_addr, (void *)0xdeadbeef);
 	      result = (*NVDimm).add(t);
 	      if(result == 1)
@@ -184,7 +184,7 @@ void test_obj::run_test(void){
 	  else if(waiting)
 	  {
 	      waits++;
-	      if(waits >= 50)
+	      if(waits >= 10)
 	      {
 		  waits = 0;
 		  waiting = false;
@@ -200,7 +200,7 @@ void test_obj::run_test(void){
 		}
 		if (NVDimm->numReads == NUM_WRITES)
 		break;*/
-		if (NVDimm->numReads == NUM_WRITES)
+		if (NVDimm->numWrites == NUM_WRITES)
 			break;
 	}
 

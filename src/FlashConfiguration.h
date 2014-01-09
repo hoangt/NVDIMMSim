@@ -165,7 +165,7 @@ extern uint64_t DIES_PER_PACKAGE;
 extern uint64_t PLANES_PER_DIE;
 extern uint64_t BLOCKS_PER_PLANE;
 extern uint64_t VIRTUAL_BLOCKS_PER_PLANE;
-extern uint64_t PAGES_PER_BLOCK;
+extern uint64_t PAGES_PER_BLOCK; // when in PCM mode this should always be 1 because pages are the erase granularity for PCM
 extern uint64_t NV_PAGE_SIZE;
 extern float DEVICE_CYCLE; // in nanoseconds
 extern uint64_t DEVICE_WIDTH;

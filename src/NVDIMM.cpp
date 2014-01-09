@@ -75,7 +75,19 @@ namespace NVDSim
 
 	Init::EnumsFromStrings();
 	
-	BLOCKS_PER_PLANE = (uint64_t)(VIRTUAL_BLOCKS_PER_PLANE * PBLOCKS_PER_VBLOCK);
+	// this is where the overprovisioning happens
+	if(wearLevelingScheme == StartGap)
+	{
+	    // we need an extra page(block) for the gap in start gap
+	    // we don't use the overprovisioning factor here cause start gap doesn't have a way to use
+	    // the extra blocks
+	    BLOCKS_PER_PLANE = (uint64_t)(VIRTUAL_BLOCKS_PER_PLANE+1);
+	}
+	else
+	{
+	    BLOCKS_PER_PLANE = (uint64_t)(VIRTUAL_BLOCKS_PER_PLANE * PBLOCKS_PER_VBLOCK);
+	}
+
 	if(LOGGING == 1)
 	{
 	    PRINT("Logs are being generated");
@@ -112,6 +124,9 @@ namespace NVDSim
 	case RoundRobin:
 	    PRINT("Memory is using a round robin wear leveling scheme");
 	    break;
+	case StartGap:
+	    PRINT("Memory is using the start gap wear leveling scheme");
+	    break;
 	case DirectTranslation:
 	    PRINT("Memory is using a direct address translation wear leveling scheme");
 	    break;
@@ -119,6 +134,11 @@ namespace NVDSim
 	    break;
 	}
 
+	if(wearLevelingScheme == StartGap && PAGES_PER_BLOCK != 1)
+	{
+	    PRINT("WARNING: PCM blocks should consist of just 1 page but that is not the case here");
+	}
+	
 	PRINT("\nTiming Info:\n");
 	PRINT("Read time: "<<READ_TIME);
 	PRINT("Write Time: "<<WRITE_TIME);

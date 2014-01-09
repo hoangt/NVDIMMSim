@@ -111,12 +111,23 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	if(RANDOM_ADDR)
 	{
 	    randomAddrs = vector<uint64_t>((numBlocks * PAGES_PER_BLOCK)-1);
+	    cout << (numBlocks * PAGES_PER_BLOCK)-1 << "\n";
+	    cout << randomAddrs.size() << "\n";
 	    for(uint64_t i = 0; i < (numBlocks * PAGES_PER_BLOCK); i++)
 	    {
-		randomAddrs.push_back(i); // fill vector with all of the addresses
+		randomAddrs[i] = i; // fill vector with all of the addresses
 	    }
 
+	    for(std::vector<uint64_t>::const_iterator i = randomAddrs.begin(); i != randomAddrs.end(); i++)
+		cout << *i << " ";
+
+	    cout << "\n";
+
 	    std::random_shuffle(randomAddrs.begin(), randomAddrs.end());
+	    for(std::vector<uint64_t>::const_iterator i = randomAddrs.begin(); i != randomAddrs.end(); i++)
+		cout << *i << " ";
+
+	    cout << "\n";
 	}
 }
 
@@ -237,7 +248,7 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 
 bool Ftl::addTransaction(FlashTransaction &t){
     // if we're using start gap then we have to exclude an extra page from the address space
-    if(t.address < (VIRTUAL_TOTAL_SIZE-((wearLevelingScheme == StartGap)?1:0)))
+    if(t.address < (VIRTUAL_TOTAL_SIZE*1024))
     {
 	// we are going to favor reads over writes
 	// so writes get put into a special lower prioirty queue
@@ -795,15 +806,15 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
     // this will use the old gap placement while gap movement is taking place as the start
     // and gap values are only updated once the data has been safely moved from the new
     // gap location
-    pAddr = (iAddr + start) % ((numBlocks * PAGES_PER_BLOCK)-2);
+    pAddr = (iAddr + start) % ((numBlocks * PAGES_PER_BLOCK)-1);
     if(pAddr >= gap)
     {
 	pAddr = pAddr + 1;
     }
     
     cout << iAddr + start << "\n";
-    cout << (numBlocks * PAGES_PER_BLOCK)-2 << "\n";
-    cout << (iAddr + start) % ((numBlocks * PAGES_PER_BLOCK)-2) << "\n";
+    cout << (numBlocks * PAGES_PER_BLOCK)-1 << "\n";
+    cout << (iAddr + start) % ((numBlocks * PAGES_PER_BLOCK)-1) << "\n";
     cout << "gap is " << gap << "\n";
     cout << "start is " << start << "\n";
     cout << "start gap v address is " << vAddr << "\n";
