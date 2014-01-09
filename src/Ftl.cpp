@@ -111,23 +111,14 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	if(RANDOM_ADDR)
 	{
 	    randomAddrs = vector<uint64_t>((numBlocks * PAGES_PER_BLOCK)-1);
-	    cout << (numBlocks * PAGES_PER_BLOCK)-1 << "\n";
-	    cout << randomAddrs.size() << "\n";
-	    for(uint64_t i = 0; i < (numBlocks * PAGES_PER_BLOCK); i++)
+
+	    for(uint64_t i = 0; i < (numBlocks * PAGES_PER_BLOCK)-1; i++)
 	    {
 		randomAddrs[i] = i; // fill vector with all of the addresses
 	    }
 
-	    for(std::vector<uint64_t>::const_iterator i = randomAddrs.begin(); i != randomAddrs.end(); i++)
-		cout << *i << " ";
-
-	    cout << "\n";
-
+	    // actually randomizes stuff
 	    std::random_shuffle(randomAddrs.begin(), randomAddrs.end());
-	    for(std::vector<uint64_t>::const_iterator i = randomAddrs.begin(); i != randomAddrs.end(); i++)
-		cout << *i << " ";
-
-	    cout << "\n";
 	}
 }
 
