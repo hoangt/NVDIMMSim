@@ -819,9 +819,9 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
     if(RANDOM_ADDR)
     {
 	// have to get the contiguous page number for this vAddr
-	uint64_t page_num = vAddr/((numBlocks * PAGES_PER_BLOCK)-1);
+	uint64_t page_num = vAddr/NV_PAGE_SIZE;
 	cout << "page num is " << page_num << "\n";
-	uint64_t offset = vAddr%((numBlocks * PAGES_PER_BLOCK)-1);
+	uint64_t offset = vAddr%NV_PAGE_SIZE;
 	cout << "offset is " << offset << "\n";
 	iAddr = randomAddrs[page_num]; // get our random address for this virtual address
 	cout << "randomized page num " << iAddr << "\n";
