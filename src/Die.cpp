@@ -98,14 +98,8 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			case GC_WRITE:
 			    	planes[busPacket->plane].write(busPacket);
 				parentNVDIMM->numWrites++;			
-			        if((DEVICE_TYPE.compare("PCM") == 0 || DEVICE_TYPE.compare("P8P") == 0) && GARBAGE_COLLECT == 0)
-				{
-					controlCyclesLeft[busPacket->plane]= ERASE_TIME;
-				}
-				else
-				{
-					controlCyclesLeft[busPacket->plane]= WRITE_TIME;
-				}
+				controlCyclesLeft[busPacket->plane]= WRITE_TIME;
+
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
 				{

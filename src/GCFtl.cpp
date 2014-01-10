@@ -55,7 +55,7 @@ GCFtl::GCFtl(Controller *c, Logger *l, NVDIMM *p)
 }
 
 bool GCFtl::addTransaction(FlashTransaction &t){
-    if(t.address < (VIRTUAL_TOTAL_SIZE*1024))
+    if(t.address < VIRTUAL_TOTAL_SIZE)
     {
 	if(!panic_mode)
 	{

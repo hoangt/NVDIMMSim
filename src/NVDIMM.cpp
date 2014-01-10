@@ -81,7 +81,8 @@ namespace NVDSim
 	    // we need an extra page(block) for the gap in start gap
 	    // we don't use the overprovisioning factor here cause start gap doesn't have a way to use
 	    // the extra blocks
-	    BLOCKS_PER_PLANE = (uint64_t)(VIRTUAL_BLOCKS_PER_PLANE+1);
+	    // we take care of that in Ftl.cpp
+	    BLOCKS_PER_PLANE = (uint64_t)(VIRTUAL_BLOCKS_PER_PLANE);
 	}
 	else
 	{
@@ -118,7 +119,6 @@ namespace NVDSim
 	  PRINT("Memory channels are directly connected to dies");
 	}
 	
-	cout << wearLevelingScheme << "\n";
 	switch(wearLevelingScheme)
 	{
 	case RoundRobin:
