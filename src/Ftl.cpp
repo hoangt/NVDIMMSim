@@ -370,53 +370,23 @@ void Ftl::handle_disk_read(bool gc)
 {
     ChannelPacket *commandPacket;
     uint64_t vAddr = currentTransaction.address, pAddr;
-    uint64_t start;
     bool done = false;;
-    uint64_t block, page, tmp_block, tmp_page;
-
+    uint64_t block, page;
+    write_location loc;
 
     //=============================================================================
     // the fast write part
     //=============================================================================
     //look for first free physical page starting at the write pointer
 
-    start = BLOCKS_PER_PLANE * (plane + PLANES_PER_DIE * (die + DIES_PER_PACKAGE * channel));
-    
-    // Search from the current write pointer to the end of the flash for a free page.
-    for (block = start ; block < TOTAL_SIZE / BLOCK_SIZE && !done; block++)
-    {
-	for (page = 0 ; page < PAGES_PER_BLOCK  && !done ; page++)
-	{
-	    if (!used[block][page])
-	    {
-		tmp_block = block;
-		tmp_page = page;
-		pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
-		done = true;
-	    }
-	}
-    }
-    block = tmp_block;
-    page = tmp_page;
-    
-    if (!done)
-    {							
-	for (block = 0 ; block < start / BLOCK_SIZE && !done; block++)
-	{
-	    for (page = 0 ; page < PAGES_PER_BLOCK  && !done; page++)
-	    {
-		if (!used[block][page])
-		{
-		    tmp_block = block;
-		    tmp_page = page;
-		    pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
-		    done = true;
-		}
-	    }
-	}
-	block = tmp_block;
-	page = tmp_page;
-    }
+    // find the next location for this write
+    // calling the appropriate next location scheme
+    loc = next_write_location(vAddr);
+    // gettting all the useful information
+    pAddr = loc.address;
+    block = loc.block;
+    page = loc.page;
+    done = loc.done;
 
     if (!done)
     {
@@ -444,12 +414,15 @@ void Ftl::handle_disk_read(bool gc)
 	used_page_count++;
 	addressMap[vAddr] = pAddr;
 	
-	//update "write pointer"
-	channel = (channel + 1) % NUM_PACKAGES;
-	if (channel == 0){
-	    die = (die + 1) % DIES_PER_PACKAGE;
-	    if (die == 0)
-		plane = (plane + 1) % PLANES_PER_DIE;
+	if(wearLevelingScheme == RoundRobin)
+	{
+	    //update "write pointer"
+	    channel = (channel + 1) % NUM_PACKAGES;
+	    if (channel == 0){
+		die = (die + 1) % DIES_PER_PACKAGE;
+		if (die == 0)
+		    plane = (plane + 1) % PLANES_PER_DIE;
+	    }
 	}
 	//=============================================================================
 	// the read part
@@ -971,7 +944,7 @@ void Ftl::handle_write(bool gc)
 	    write_success(block, page, vAddr, pAddr, gc, mapped);
 	    
 	    // if we are using the real write pointer, then update it
-	    if(itr_count == 0)
+	    if(itr_count == 0 && wearLevelingScheme == RoundRobin)
 	    {
 		//update "write pointer"
 		channel = (channel + 1) % NUM_PACKAGES;
@@ -1007,6 +980,17 @@ void Ftl::handle_trim(void)
 
 void Ftl::handle_preset(void)
 {
+        uint64_t vAddr = currentTransaction.address;
+
+	// find out where the corresponding write is going
+	
+	// send an erase to the appropriate location to prepare for it be written
+	
+	// Pop the transaction from the transaction queue.
+	popFrontTransaction();
+	
+	// The FTL is no longer busy.
+	busy = 0;
 }
 
 void Ftl::popFrontTransaction()
