@@ -211,6 +211,7 @@ bool Controller::addPacket(ChannelPacket *p){
 	    break;
         case WRITE:
 	case SET_WRITE:
+	case PRESET_WRITE:
         case DATA:
 	     if ((writeQueues[p->package][p->die].size() < CTRL_WRITE_QUEUE_LENGTH) || (CTRL_WRITE_QUEUE_LENGTH == 0))
 		 writeQueues[p->package][p->die].push_back(p);
@@ -244,6 +245,8 @@ bool Controller::addPacket(ChannelPacket *p){
 	    case DATA:
 	    case SET_WRITE:
 		log->log_ctrl_queue_event(true, p->package, &writeQueues[p->package][p->die]);
+		break;
+	    case PRESET_WRITE:
 		break;
 	    default:
 		ERROR("Illegal busPacketType " << p->busPacketType << " in Controller::receiveFromChannel\n");
@@ -464,6 +467,7 @@ void Controller::update(void){
 				log->log_ctrl_queue_event(true, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
 				break;
 			    case FAST_WRITE:
+			    case PRESET_WRITE:
 				break;
 			    }
 			}

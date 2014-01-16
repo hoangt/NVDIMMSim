@@ -124,6 +124,16 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 				    log->log_plane_state(busPacket->virtualAddress, busPacket->package, busPacket->die, busPacket->plane, WRITING);
 				}
 				break;
+			 case PRESET_WRITE:
+			        parentNVDIMM->numErases++;
+				controlCyclesLeft[busPacket->plane]= ERASE_TIME;
+
+				// log the new state of this plane
+				if(LOGGING && PLANE_STATE_LOG)
+				{
+				    log->log_plane_state(busPacket->virtualAddress, busPacket->package, busPacket->die, busPacket->plane, ERASING);
+				}
+				break;	
 			case ERASE:
 			        planes[busPacket->plane].erase(busPacket);
 			        parentNVDIMM->numErases++;
@@ -219,7 +229,7 @@ void Die::update(void){
 					    break;
 					case WRITE:
 				        case SET_WRITE:
-						//call write callback					   
+					    //call write callback					   
 					    if (parentNVDIMM->WriteDataDone != NULL){
 						(*parentNVDIMM->WriteDataDone)(parentNVDIMM->systemID, currentCommand->virtualAddress, currentClockCycle,true);
 					    }
@@ -236,7 +246,7 @@ void Die::update(void){
 				}
 
 				ChannelPacketType bpt = currentCommand->busPacketType;
-				if ((bpt == WRITE) || (bpt == SET_WRITE) || (bpt == GC_WRITE) || (bpt == ERASE))
+				if ((bpt == WRITE) || (bpt == SET_WRITE) || (bpt == PRESET_WRITE) || (bpt == GC_WRITE) || (bpt == ERASE))
 				{
 					// For everything but READ/GC_READ, and DATA, the access is done at this point.
 					// Note: for READ/GC_READ, this is handled in Controller::receiveFromChannel().

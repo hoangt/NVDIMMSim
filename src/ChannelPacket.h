@@ -51,6 +51,7 @@ namespace NVDSim
 		ERASE,
 		DATA,
 		SET_WRITE,
+		PRESET_WRITE,
 		FAST_WRITE
 	};
 

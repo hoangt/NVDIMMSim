@@ -108,21 +108,6 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	start = 0;
 	gap = ((numBlocks * PAGES_PER_BLOCK)-1)*NV_PAGE_SIZE; // gap is a physical address
 
-	// check gap placement
-	uint64_t temp = gap;
-	temp /= NV_PAGE_SIZE;
-	uint page = temp % PAGES_PER_BLOCK;
-	temp /= PAGES_PER_BLOCK;
-	uint block = temp % BLOCKS_PER_PLANE;
-	temp /= BLOCKS_PER_PLANE;
-	uint plane = temp % PLANES_PER_DIE;
-	temp /= PLANES_PER_DIE;
-	uint die = temp % DIES_PER_PACKAGE;
-	temp /= DIES_PER_PACKAGE;
-	uint package = temp % NUM_PACKAGES;
-
-	cout << "gap locations is: page - " << page << " block - " << block << " plane - " << plane << " die - " << die << " package - " << package << "\n";
-
 	pending_gap_read = false; // indicates that we're waiting on a read of the data from the new gap location
 	gap_read_delayed = false; // indicates that there was no room for the read and we will have to try again
 	pending_gap_write = false; // indicates that we were not successful in writing the data to the old gap 
@@ -563,7 +548,6 @@ void Ftl::write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t 
 	
     // Update the write counter.
     write_counter++;
-    cout << "WRITE COUNTER IS " << write_counter << "\n";
 	
     // we've updated the write counter so now its safe to reset the gap movement bool
     gap_moved = false;
@@ -653,7 +637,6 @@ void Ftl::gap_rotate(void)
 {
     if(gap == 0)
     {
-	cout << "start has been moved \n";
 	gap = ((numBlocks * PAGES_PER_BLOCK)-1)*NV_PAGE_SIZE;
 	start = start + NV_PAGE_SIZE;
 	if(start >= (numBlocks * PAGES_PER_BLOCK)-1)
@@ -666,31 +649,14 @@ void Ftl::gap_rotate(void)
 	gap = gap - NV_PAGE_SIZE;
     }
 
-    // check gap placement
-    uint64_t temp = gap;
-    temp /= NV_PAGE_SIZE;
-    uint page = temp % PAGES_PER_BLOCK;
-    temp /= PAGES_PER_BLOCK;
-    uint block = temp % BLOCKS_PER_PLANE;
-    temp /= BLOCKS_PER_PLANE;
-    uint plane = temp % PLANES_PER_DIE;
-    temp /= PLANES_PER_DIE;
-    uint die = temp % DIES_PER_PACKAGE;
-    temp /= DIES_PER_PACKAGE;
-    uint package = temp % NUM_PACKAGES;
-
-    cout << "gap locations is: page - " << page << " block - " << block << " plane - " << plane << " die - " << die << " package - " << package << "\n";
-
     gap_moving = false;
     gap_moved = true;
-    cout << "gap has been moved \n";
 }
 
 // we are doing this at the FTL level because the gap can move across the entire physical memory
 // space and so cannot be an internal die operation
 void Ftl::gap_movement(void)
 {
-    cout << "moving that gap \n";
     FlashTransaction trans;
     uint64_t vAddr;
     ChannelPacket *commandPacket;
@@ -802,13 +768,9 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
     {
 	// have to get the contiguous page number for this vAddr
 	uint64_t page_num = vAddr/NV_PAGE_SIZE;
-	cout << "page num is " << page_num << "\n";
 	uint64_t offset = vAddr%NV_PAGE_SIZE;
-	cout << "offset is " << offset << "\n";
 	iAddr = randomAddrs[page_num]; // get our random address for this virtual address
-	cout << "randomized page num " << iAddr << "\n";
 	iAddr = iAddr * NV_PAGE_SIZE;
-	cout << "randomized address " << iAddr << "\n";
 	iAddr = iAddr + offset;
     }
     else
@@ -833,21 +795,10 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
     {
 	pAddr = pAddr + NV_PAGE_SIZE;
     }
-    
-    cout << iAddr + start << "\n";
-    cout << numBlocks << "\n";
-    cout << ((numBlocks * PAGES_PER_BLOCK)-1)*4096 << "\n";
-    cout << (iAddr + start) % (((numBlocks * PAGES_PER_BLOCK)-1)*4096) << "\n";
-    cout << "gap is " << gap << "\n";
-    cout << "start is " << start << "\n";
-    cout << "start gap v address is " << vAddr << "\n";
-    cout << "start gap i address is " << iAddr << "\n";
-    cout << "start gap p address is " << pAddr << "\n";
+
     loc.address = pAddr;
     loc.block = pAddr / BLOCK_SIZE;
-    cout << "block is " << loc.block << "\n";
     loc.page = (pAddr / NV_PAGE_SIZE) % PAGES_PER_BLOCK;
-    cout << "page is " << loc.page << "\n";
     loc.done = true;
     return loc;
 }
@@ -893,7 +844,6 @@ void Ftl::handle_write(bool gc)
 	pAddr = loc.address;
 	block = loc.block;
 	page = loc.page;
-	cout << "write handler p address is " << pAddr << "\n";
 	done = loc.done;
     }
 	    
@@ -915,8 +865,7 @@ void Ftl::handle_write(bool gc)
 	// first things first, we're no longer in danger of dead locking so reset the counter
 	deadlock_counter = 0;
 	
-	//send write to controller
-	
+	//send write to controller	
 	ChannelPacketType write_type;
 	// if this page is dirty and there is no garbage collection, we must issue an erase instead of a write
 	// this should only occur with PCM as NAND and NOR will have to use GC
@@ -951,8 +900,6 @@ void Ftl::handle_write(bool gc)
 	    // Do not need to check the return values for these since checkQueueWrite() was called
 	    controller->addPacket(dataPacket);
 	    controller->addPacket(commandPacket);
-
-	    cout << "write handler page is " << page << " and block is " << block << "\n";
 	    
 	    // made this a function cause the code was repeated a bunch of places
 	    write_success(block, page, vAddr, pAddr, gc, mapped);
@@ -1004,20 +951,46 @@ void Ftl::handle_trim(void)
 void Ftl::handle_preset(void)
 {
         uint64_t vAddr = currentTransaction.address;
-	    
+	ChannelPacket *commandPacket;
+	write_location loc;
+	
 	//safety first
 	if(addressMap.find(vAddr) != addressMap.end())
 	{
-	    // this page is no longer dirty because we have erased it now
-	    dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
-	    dirty_page_count--;
-	}
+	    loc = next_write_location(vAddr);
+	    
+	    commandPacket = Ftl::translate(PRESET_WRITE, vAddr, addressMap[vAddr]);
+	    //send the read to the controller
+	    bool result = controller->addPacket(commandPacket);
 
-	// Pop the transaction from the transaction queue.
-	popFrontTransaction();
+	    if(result)
+	    {
+		// this page is no longer dirty because we have erased it now
+		dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
+		dirty_page_count--;
+		
+		// Pop the transaction from the transaction queue.
+		popFrontTransaction();
 	
-	// The FTL is no longer busy.
-	busy = 0;
+		// The FTL is no longer busy.
+		busy = 0;
+	    }
+	    else
+	    {
+		// Delete the packet if it is not being used to prevent memory leaks.
+		delete commandPacket;
+		ctrl_write_queues_full = true;	
+		log->locked_up(currentClockCycle);
+	    }
+	}
+	else
+	{
+	    // Pop the transaction from the transaction queue.
+	    popFrontTransaction();
+	
+	    // The FTL is no longer busy.
+	    busy = 0;
+	}
 }
 
 void Ftl::popFrontTransaction()
@@ -1066,7 +1039,6 @@ void Ftl::preDirty(void)
 {
     if(PERCENT_DIRTY > 0 && !dirtied)
     {
-	cout << "dirtying the devices \n";
 	// use virtual blocks here so we don't deadlock the entire NVM
 	uint numBlocks = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * VIRTUAL_BLOCKS_PER_PLANE;
 	for(uint i = 0; i < numBlocks; i++)
@@ -1280,10 +1252,8 @@ void Ftl::queuesNotFull(void)
 // once the read is done, we create a write for that data and send it
 void Ftl::GCReadDone(uint64_t vAddr)
 {   
-    cout << "gc read done called \n";
     if(wearLevelingScheme == StartGap && pending_gap_read)
     {
-	cout << "gap read completed \n";
 	pending_gap_read = false;
 	gap_write_vAddr = vAddr;
 	handle_gap_write(vAddr);
