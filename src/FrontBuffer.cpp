@@ -75,6 +75,9 @@ bool FrontBuffer::addTransaction(FlashTransaction transaction){
     switch (transaction.transactionType)
     {
     case DATA_READ: 
+    case BLOCK_ERASE:
+    case PRESET_PAGE:
+    case TRIM:
 	if(requestsSize <= (REQUEST_BUFFER_SIZE - COMMAND_LENGTH))
 	{
 	    requests.push(transaction);
@@ -317,7 +320,8 @@ void FrontBuffer::updateCommand(void){
 }
 
 uint64_t FrontBuffer::setDataCycles(FlashTransaction transaction, uint64_t width){
-    if(transaction.transactionType == DATA_READ)
+    if(transaction.transactionType == DATA_READ || transaction.transactionType == BLOCK_ERASE || transaction.transactionType == PRESET_PAGE || 
+       transaction.transactionType == TRIM)
     {
 	if(!ENABLE_COMMAND_CHANNEL)
 	{

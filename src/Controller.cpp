@@ -210,6 +210,7 @@ bool Controller::addPacket(ChannelPacket *p){
 	        return false;
 	    break;
         case WRITE:
+	case SET_WRITE:
         case DATA:
 	     if ((writeQueues[p->package][p->die].size() < CTRL_WRITE_QUEUE_LENGTH) || (CTRL_WRITE_QUEUE_LENGTH == 0))
 		 writeQueues[p->package][p->die].push_back(p);
@@ -241,6 +242,7 @@ bool Controller::addPacket(ChannelPacket *p){
 		break;
 	    case WRITE:
 	    case DATA:
+	    case SET_WRITE:
 		log->log_ctrl_queue_event(true, p->package, &writeQueues[p->package][p->die]);
 		break;
 	    default:
@@ -457,6 +459,7 @@ void Controller::update(void){
 				break;
 			    case WRITE:
 			    case GC_WRITE:
+			    case SET_WRITE:
 			    case DATA:
 				log->log_ctrl_queue_event(true, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
 				break;

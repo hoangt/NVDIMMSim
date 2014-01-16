@@ -49,7 +49,7 @@ void Plane::read(ChannelPacket *busPacket){
 	if (blocks.find(busPacket->block) != blocks.end()){
 	    busPacket->data= blocks[busPacket->block].read(busPacket->page);
 	} else{
-		ERROR("Invalid read: Block "<<busPacket->block<<" hasn't been written to");
+	    ERROR("Invalid read: Block "<<busPacket->block<<" hasn't been written to. Address was "<<busPacket->virtualAddress);
 	}
 
 	// Put this packet on the data register if the cache register is occupied,
@@ -101,6 +101,7 @@ void Plane::erase(ChannelPacket *busPacket){
 	if (blocks.find(busPacket->block) != blocks.end()){
 		blocks[busPacket->block].erase();
 		blocks.erase(busPacket->block);
+		cout << "Erased a block \n";
 	}
 }
 

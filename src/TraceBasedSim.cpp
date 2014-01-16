@@ -48,7 +48,7 @@
 #include "TraceBasedSim.h"
 
 #define NUM_WRITES 200
-#define SIM_CYCLES 100000000000
+#define SIM_CYCLES 1000000000
 
 /*temporary assignments for externed variables.
  * This should really be done with another class
@@ -160,21 +160,21 @@ void test_obj::run_test(void){
 
 	int writes = 0;
 	bool result = false;
-	int write_addr = 10;
+	int write_addr = 0;
 	bool waiting = false;
 	int waits = 0;
 	
 	for (cycle= 0; cycle<SIM_CYCLES; cycle++){
-	  if(writes < NUM_WRITES && !waiting){
-	      //t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
-	      //result = (*NVDimm).add(t);
+	  if(!waiting){
+	      t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
+	      result = (*NVDimm).add(t);
 	      t = FlashTransaction(DATA_WRITE, write_addr, (void *)0xdeadbeef);
 	      result = (*NVDimm).add(t);
 	      if(result == 1)
 	      {
 		  writes++;
-		  write_addr++;
-		  if(write_addr >= 17)
+		  write_addr = write_addr + NV_PAGE_SIZE;
+		  if(write_addr >= (17*NV_PAGE_SIZE))
 		  {
 		      write_addr = 0;
 		  }
@@ -191,6 +191,12 @@ void test_obj::run_test(void){
 	      }
 	  }
 
+	  if(writes % 10 == 0)
+	  {
+	      t = FlashTransaction(PRESET_PAGE, write_addr, (void *)0xdeadbeef);
+	      result = (*NVDimm).add(t);
+	  }
+
 	  (*NVDimm).update();
 		/*if (cycle < NUM_WRITES){
 			t= FlashTransaction(DATA_READ, cycle, (void *)0xfeedface);
@@ -200,7 +206,7 @@ void test_obj::run_test(void){
 		}
 		if (NVDimm->numReads == NUM_WRITES)
 		break;*/
-		if (NVDimm->numWrites == NUM_WRITES)
+		if (NVDimm->numReads == NUM_WRITES)
 			break;
 	}
 

@@ -531,13 +531,22 @@ void Ftl::handle_read(bool gc)
 
 void Ftl::write_used_handler(uint64_t vAddr)
 {
-		// we're going to write this data somewhere else for wear-leveling purposes however we will probably 
-		// want to reuse this block for something at some later time so mark it as unused because it is
-		used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
+    // used and dirty are mutually exclusive states for round robin wear leveling and so we need to unmark
+    // this page as used and make it dirty
 
-		used_page_count--;
+    // technically this page won't stop being used with start gap but because its address might change slightly
+    // on this rewrite, we temporarily mark it as unused on a rewrite
 
-		//cout << "USING FTL's WRITE_USED_HANDLER!!!\n";
+    // we're going to write this data somewhere else for wear-leveling purposes however we will probably 
+    // want to reuse this block for something at some later time so mark it as unused because it is
+    used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;   
+    used_page_count--;
+
+    // here we do mark the unused page as dirty so that we can know how long it will take to write to it
+    dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = true;
+    dirty_page_count ++;
+    
+    //cout << "USING FTL's WRITE_USED_HANDLER!!!\n";
 }
 
 void Ftl::write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t pAddr, bool gc, bool mapped)
@@ -909,10 +918,15 @@ void Ftl::handle_write(bool gc)
 	//send write to controller
 	
 	ChannelPacketType write_type;
-	if (gc)
+	// if this page is dirty and there is no garbage collection, we must issue an erase instead of a write
+	// this should only occur with PCM as NAND and NOR will have to use GC
+	if (!GARBAGE_COLLECT && dirty[block][page])
+	    write_type = SET_WRITE;
+	else if (gc)
 	    write_type = GC_WRITE;
 	else
 	    write_type = WRITE;
+
 	dataPacket = Ftl::translate(DATA, vAddr, pAddr);
 	commandPacket = Ftl::translate(write_type, vAddr, pAddr);
 	
@@ -934,7 +948,7 @@ void Ftl::handle_write(bool gc)
 	else if (queue_open)
 	{
 	    // Add the packets to the controller queue.
-	    // Do not need to check the return values for these since checkQueueWrite() was called.
+	    // Do not need to check the return values for these since checkQueueWrite() was called
 	    controller->addPacket(dataPacket);
 	    controller->addPacket(commandPacket);
 
@@ -968,9 +982,18 @@ void Ftl::handle_trim(void)
 {
         uint64_t vAddr = currentTransaction.address;
 
-	// this page has been identified as no longer in use, so mark it as such
-	used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
-	
+	//safety first
+	if(addressMap.find(vAddr) != addressMap.end())
+	{
+	    // this page has been identified as no longer in use, so mark it as such
+	    used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
+
+	    // however the data on this page is still present so it is now dirty
+	    // here we do mark the unused page as dirty so that we can know how long it will take to write to it
+	    dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = true;
+	    dirty_page_count++;
+	}
+
 	// Pop the transaction from the transaction queue.
 	popFrontTransaction();
 	
@@ -981,11 +1004,15 @@ void Ftl::handle_trim(void)
 void Ftl::handle_preset(void)
 {
         uint64_t vAddr = currentTransaction.address;
+	    
+	//safety first
+	if(addressMap.find(vAddr) != addressMap.end())
+	{
+	    // this page is no longer dirty because we have erased it now
+	    dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
+	    dirty_page_count--;
+	}
 
-	// find out where the corresponding write is going
-	
-	// send an erase to the appropriate location to prepare for it be written
-	
 	// Pop the transaction from the transaction queue.
 	popFrontTransaction();
 	

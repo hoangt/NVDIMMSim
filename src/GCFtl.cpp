@@ -100,7 +100,7 @@ void GCFtl::update(void){
 		}
 	}
 
-	if (!gc_status && (float)used_page_count >= (float)(FORCE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE))){
+	if (!gc_status && (float)dirty_page_count >= (float)(FORCE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE))){
 	    if(dirty_page_count != 0)
 	    {
 		start_erase = parent->numErases;
@@ -253,13 +253,15 @@ void GCFtl::update(void){
 
 void GCFtl::write_used_handler(uint64_t vAddr)
 {
-	dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = true;
+    // when using the GC, we won't mark something as unused until it has been erased in order to prevent unerased things
+    // from being written to accidentally
+        dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = true;
 	dirty_page_count ++;
 }
 
 bool GCFtl::checkGC(void){
 	// Return true if more than 70% of blocks are dirty and false otherwise.
-        if ((float)used_page_count > ((float)IDLE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE)))
+        if ((float)dirty_page_count > ((float)IDLE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE)))
 		return true;
 	return false;
 }

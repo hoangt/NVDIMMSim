@@ -50,8 +50,8 @@ namespace NVDSim
 		GC_WRITE,
 		ERASE,
 		DATA,
-		FAST_WRITE,
-		PRESET_PG
+		SET_WRITE,
+		FAST_WRITE
 	};
 
 	class ChannelPacket
