@@ -49,15 +49,17 @@ Die::Die(NVDIMM *parent, Logger *l, uint64_t idNum){
 
 	sending = false;
 
-	planes= vector<Plane>(PLANES_PER_DIE, Plane());
+	planes = vector<Plane>(PLANES_PER_DIE, Plane());
 
-	currentCommands= vector<ChannelPacket *>(PLANES_PER_DIE, NULL);
+	currentCommands = vector<ChannelPacket *>(PLANES_PER_DIE, NULL);
+	pausedCommands = vector<ChannelPacket *>(PLANES_PER_DIE, NULL);
 
-	dataCyclesLeft= 0;
-	deviceBeatsLeft= 0;
-	controlCyclesLeft= new uint[PLANES_PER_DIE];
+	dataCyclesLeft = 0;
+	deviceBeatsLeft = 0;
+	controlCyclesLeft = new uint[PLANES_PER_DIE];
+	pausedCyclesLeft = new uint[PLANES_PER_DIE];
 
-	currentClockCycle= 0;
+	currentClockCycle = 0;
 
 	critBeat = ((divide_params((NV_PAGE_SIZE*8),DEVICE_WIDTH)-divide_params((uint)512,DEVICE_WIDTH)) * DEVICE_CYCLE) / CYCLE_TIME; // cache line is 64 bytes
 }
@@ -388,4 +390,19 @@ void Die::critLineDone()
 void Die::writeToPlane(ChannelPacket *packet)
 {
     planes[packet->plane].write(packet);
+}
+
+bool Die::writePause(uint64_t plane)
+{
+
+}
+
+bool Die::writeResume(uint64_t plane)
+{
+
+}
+
+bool Die::writeCancel(uint64_t plane)
+{
+
 }

@@ -60,6 +60,9 @@ namespace NVDSim{
 			void bufferDone(uint64_t plane);
 			void bufferLoaded(void);
 			void critLineDone(void);
+			bool writePause(uint64_t plane);
+			bool writeResume(uint64_t plane);
+			bool writeCancel(uint64_t plane);
 
 			// for fast forwarding
 			void writeToPlane(ChannelPacket *packet);
@@ -77,7 +80,9 @@ namespace NVDSim{
 			std::queue<ChannelPacket *> pendingDataPackets;
 			std::vector<Plane> planes;
 			std::vector<ChannelPacket *> currentCommands;
-			uint *controlCyclesLeft;
+			std::vector<ChannelPacket *> pausedCommands;
+			uint* pausedCyclesLeft;
+			uint* controlCyclesLeft;
 	};
 }
 #endif
