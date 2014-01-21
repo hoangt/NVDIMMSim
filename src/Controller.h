@@ -91,6 +91,8 @@ namespace NVDSim{
 
 			void bufferDone(uint64_t package, uint64_t die, uint64_t plane);
 
+			bool readWaiting(uint64_t package, uint64_t die, uint64_t plane);
+
 			// for fast forwarding
 			void writeToPackage(ChannelPacket *packet);
 

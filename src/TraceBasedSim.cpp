@@ -166,10 +166,11 @@ void test_obj::run_test(void){
 	
 	for (cycle= 0; cycle<SIM_CYCLES; cycle++){
 	  if(!waiting){
+	      t = FlashTransaction(DATA_WRITE, write_addr, (void *)0xdeadbeef);
+	      result = (*NVDimm).add(t);
 	      t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
 	      result = (*NVDimm).add(t);
-	      //t = FlashTransaction(DATA_WRITE, write_addr, (void *)0xdeadbeef);
-	      //result = (*NVDimm).add(t);
+	      
 	      if(result == 1)
 	      {
 		  writes++;

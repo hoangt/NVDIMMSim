@@ -252,7 +252,7 @@ namespace NVDSim
 	
 
 	for (i= 0; i < NUM_PACKAGES; i++){
-	    Package pack = {new Channel(), new Buffer(i), vector<Die *>()};
+	    Package pack = {new Channel(i), new Buffer(i), vector<Die *>()};
 	    //pack.channel= new Channel();
 	    pack.channel->attachController(controller);
 	    pack.channel->attachBuffer(pack.buffer);

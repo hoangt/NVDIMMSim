@@ -125,7 +125,10 @@ extern WearLevelingScheme wearLevelingScheme;
 extern uint GAP_WRITE_INTERVAL;
 extern bool RANDOM_ADDR;
 
-extern bool PRESET;
+// Write blocking avoidance
+extern bool WRITE_PAUSING;
+extern bool WRITE_CANCELATION;
+extern uint WRITE_ITERATION_CYCLES; // the time it takes to do one iteration of an MLC write
 
 // SSD Options
 extern bool DISK_READ;

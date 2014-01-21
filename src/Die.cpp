@@ -58,6 +58,8 @@ Die::Die(NVDIMM *parent, Logger *l, uint64_t idNum){
 	deviceBeatsLeft = 0;
 	controlCyclesLeft = new uint[PLANES_PER_DIE];
 	pausedCyclesLeft = new uint[PLANES_PER_DIE];
+	writeIterationCyclesLeft = new uint[PLANES_PER_DIE];
+	
 
 	currentClockCycle = 0;
 
@@ -81,6 +83,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 		switch (busPacket->busPacketType){
 			case READ:
 		        case GC_READ:
+			    cout << "started a read \n";
 			        planes[busPacket->plane].read(busPacket);
 				controlCyclesLeft[busPacket->plane]= READ_TIME;
 				// log the new state of this plane
@@ -101,7 +104,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			        planes[busPacket->plane].write(busPacket);
 				parentNVDIMM->numWrites++;			
 				controlCyclesLeft[busPacket->plane]= WRITE_TIME;
-
+				writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
 				{
@@ -119,7 +122,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			    	planes[busPacket->plane].write(busPacket);
 				parentNVDIMM->numWrites++;			
 				controlCyclesLeft[busPacket->plane]= ERASE_TIME;
-
+				writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
 				{
@@ -129,7 +132,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			 case PRESET_WRITE:
 			        parentNVDIMM->numErases++;
 				controlCyclesLeft[busPacket->plane]= ERASE_TIME;
-
+				writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
 				{
@@ -189,6 +192,10 @@ int Die::isDieBusy(uint64_t plane){
 	{
 	    return 2;
 	}
+	else if(currentCommands[plane]->busPacketType == WRITE)
+	{
+	    return 6;
+	}
     }
     // busy but not writing so no data, please, we're all full up here
     return 1;
@@ -235,7 +242,7 @@ void Die::update(void){
 					    if (parentNVDIMM->WriteDataDone != NULL){
 						(*parentNVDIMM->WriteDataDone)(parentNVDIMM->systemID, currentCommand->virtualAddress, currentClockCycle,true);
 					    }
-					    planes[currentCommand->plane].writeDone(currentCommand);
+					    planes[currentCommand->plane].writeDone(currentCommand);					    
 					    break;
 				        case GC_WRITE:
 					    break;
@@ -271,13 +278,30 @@ void Die::update(void){
 				if(no_reg_room == false)
 				{
 				    //sim output
-				    currentCommands[i]= NULL;
+				    currentCommands[i] = NULL;
+
+				    // see if there something to resume on this plane
+				    if(pausedCommands[i] != NULL)
+				    {
+					writeResume(i);
+				    }
 				}
 			}
 			// sanity check
 			if(controlCyclesLeft[i] > 0)
 			{
 			    controlCyclesLeft[i]--;
+			    ChannelPacketType bpt = currentCommand->busPacketType;
+			    // if we're doing any kind of write, we're going to track the write iteration cycles
+			    if ((bpt == WRITE) || (bpt == SET_WRITE) || (bpt == PRESET_WRITE) || (bpt == GC_WRITE))
+			    {
+				// if we're done with this iteration, reset
+				if(writeIterationCyclesLeft[i] <= 0)
+				{
+				    writeIterationCyclesLeft[i] = WRITE_ITERATION_CYCLES;
+				}
+				writeIterationCyclesLeft[i]--;
+			    } 
 			}
 		}
 	}
@@ -392,17 +416,95 @@ void Die::writeToPlane(ChannelPacket *packet)
     planes[packet->plane].write(packet);
 }
 
+// this will be called by the contoller to help it decide whether to issue a write cancel or a write pause
+uint Die::returnWriteIterationCycle(uint64_t plane)
+{
+    return writeIterationCyclesLeft[plane];
+}
+
+// this will be called by the controller, the controller will handle identifying that a read is being blocked by a write
+// this is only possible with MLC devices
 bool Die::writePause(uint64_t plane)
 {
+    cout << "write paused called for plane " << plane << "\n";
 
+    // make sure we're still writing and we don't already have a paused write somehow
+    if((currentCommands[plane]->busPacketType == WRITE || currentCommands[plane]->busPacketType == SET_WRITE || currentCommands[plane]->busPacketType == PRESET_WRITE)
+       && pausedCommands[plane] == NULL)
+    {
+	// save this command for now
+	pausedCommands[plane] = currentCommands[plane];
+	pausedCyclesLeft[plane] = controlCyclesLeft[plane];
+
+        // reset the current command to be ready for the incoming demand read
+	currentCommands[plane] = NULL;
+	controlCyclesLeft[plane] = 0;
+
+	// pause operation worked
+	return true;
+    }
+
+    // there wasn't anything to pause
+    return false;
 }
 
+// this is called by the die upon completion of whatever read was caused the write to be paused
 bool Die::writeResume(uint64_t plane)
-{
+{   
+    cout << "write resumed called for plane " << plane << "\n";
 
+    // make sure there is not another read waiting for this plane, cause we would just cancel the write if there was
+    bool avail = buffer->channel->controller->readWaiting(pausedCommands[plane]->package, pausedCommands[plane]->die, pausedCommands[plane]->plane);
+   
+    // make sure we actually have something to restore and are done doing whatever it was we were doing
+    if(pausedCommands[plane] != NULL && currentCommands[plane] == NULL && avail)
+    {
+	// restore the command
+	currentCommands[plane] = pausedCommands[plane];
+	controlCyclesLeft[plane] = pausedCyclesLeft[plane];
+
+	//restore was successful
+	return true;
+    }
+
+    // something went wrong
+    return false;
 }
 
+// this will be called by the controller, the controller will handle identifying that a read is being blocked by a write
+// this will be called instead of write pause if write pause is not enabled or if the read lands on the same block as the write
 bool Die::writeCancel(uint64_t plane)
 {
+    cout << "write cancel called for plane " << plane << "\n";
 
+    // make sure we're still writing
+    if(currentCommands[plane]->busPacketType == WRITE || currentCommands[plane]->busPacketType == SET_WRITE || currentCommands[plane]->busPacketType == PRESET_WRITE)
+    {
+        // see if there's room to readd this command back to the controller queue
+	if(buffer->channel->controller->addPacket(currentCommands[plane]))
+	{
+	    // reset the current command to be ready for the incoming demand read
+	    currentCommands[plane] = NULL;
+	    controlCyclesLeft[plane] = 0;
+	    
+	    // cancel operation worked
+	    return true;
+	}
+	else
+	{
+	    // we couldn't readd the packet back on the queue so we couldn't cancel the write
+	    // canceling would drop the write in this case
+	    // so we can't do it
+	    return false;
+	}
+    }
+
+    // there wasn't anything to cancel
+    return false;
+}
+
+// this returns that block that is currently being written to in a plane to check in the read would hit that same block
+uint64_t Die::returnWriteBlock(uint64_t plane)
+{
+    return currentCommands[plane]->block;
 }

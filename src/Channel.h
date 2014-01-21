@@ -50,7 +50,7 @@ namespace NVDSim{
 	class Buffer;
 	class Channel{
 		public:
-			Channel(void);
+			Channel(uint64_t);
 			void attachBuffer(Buffer *b);
 			void attachController(Controller *c);
 			int obtainChannel(uint s, SenderType t, ChannelPacket *p);
@@ -67,6 +67,9 @@ namespace NVDSim{
 			void bufferDone(uint64_t package, uint64_t die, uint64_t plane);
 			
 			Controller *controller;
+
+			uint64_t id;
+
 		private:
 			SenderType sType;
 			uint packetType;

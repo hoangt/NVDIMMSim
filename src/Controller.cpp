@@ -298,6 +298,8 @@ bool Controller::nextDie(uint64_t package)
 }
 
 void Controller::update(void){
+    bool success = false; // used for write pausing and cancelation
+    
     // schedule the next operation for each die
     if(SCHEDULE)
     {
@@ -448,6 +450,34 @@ void Controller::update(void){
 	    while (!done)
 	    {
 		if (!readQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
+		    // check the status of the die
+		    int status = (*packages)[i].dies[die_pointers[i]]->isDieBusy(readQueues[i][die_pointers[i]].front()->plane);
+		    //cout << "status for die " << (*packages)[i].dies[die_pointers[i]]->id << " is " << status << "\n";
+
+		    // if the die/plane is writing and we have a read waiting then see how far into this iteration
+		    if((status == 2 || status == 6) && readQueues[i][die_pointers[i]].front()->busPacketType == READ)
+		    {
+			uint writeIterationCyclesLeft = (*packages)[i].dies[die_pointers[i]]->returnWriteIterationCycle(readQueues[i][die_pointers[i]].front()->plane);
+			cout << "write iteration cycles left " << writeIterationCyclesLeft << "\n";
+
+			uint64_t currentWriteBlock = (*packages)[i].dies[die_pointers[i]]->returnWriteBlock(readQueues[i][die_pointers[i]].front()->plane);
+
+			//if we're far enough into a write iteration, then attempt a pause
+			// if this read is accessing the same block, then we need to cancel the write
+			if(writeIterationCyclesLeft < (WRITE_ITERATION_CYCLES/2) && currentWriteBlock != readQueues[i][die_pointers[i]].front()->block)
+			{
+			    if(writeIterationCyclesLeft == 0)
+			    {
+				success = (*packages)[i].dies[die_pointers[i]]->writePause(readQueues[i][die_pointers[i]].front()->plane);
+			    }
+			}
+			// if we've still got a ways to go with this write or we're using the same block, go ahead and cancel it
+			else
+			{
+			    success = (*packages)[i].dies[die_pointers[i]]->writeCancel(readQueues[i][die_pointers[i]].front()->plane);
+			}
+		    }
+		    
 		    //if we can get the channel
 		    if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, readQueues[i][die_pointers[i]].front())){
 			outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
@@ -679,4 +709,9 @@ void Controller::bufferDone(uint64_t package, uint64_t die, uint64_t plane)
 		    }
 		}
 	}
+}
+
+bool Controller::readWaiting(uint64_t package, uint64_t die, uint64_t plane)
+{
+    return false;
 }

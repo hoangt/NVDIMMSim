@@ -60,15 +60,18 @@ namespace NVDSim{
 			void bufferDone(uint64_t plane);
 			void bufferLoaded(void);
 			void critLineDone(void);
+			uint returnWriteIterationCycle(uint64_t plane);
 			bool writePause(uint64_t plane);
 			bool writeResume(uint64_t plane);
 			bool writeCancel(uint64_t plane);
+			uint64_t returnWriteBlock(uint64_t plane);
 
 			// for fast forwarding
 			void writeToPlane(ChannelPacket *packet);
 
-		private:
 			uint64_t id;
+
+		private:
 			NVDIMM *parentNVDIMM;
 			Buffer *buffer;
 			Logger *log;
@@ -83,6 +86,7 @@ namespace NVDSim{
 			std::vector<ChannelPacket *> pausedCommands;
 			uint* pausedCyclesLeft;
 			uint* controlCyclesLeft;
+			uint* writeIterationCyclesLeft;
 	};
 }
 #endif

@@ -40,7 +40,8 @@
 
 using namespace NVDSim;
 
-Channel::Channel(void){
+Channel::Channel(uint64_t i){
+        id = i;
 	sender = -1;
 	busy = 0;
 
