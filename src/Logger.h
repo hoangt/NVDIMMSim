@@ -116,6 +116,7 @@ namespace NVDSim
 	void access_start(uint64_t addr, TransactionType op);
 	void access_process(uint64_t addr, uint64_t paddr, uint package, ChannelPacketType op);
 	virtual void access_stop(uint64_t addr, uint64_t paddr);
+	void access_cancel(uint64_t addr, uint64_t paddr);
 
 	virtual void save_epoch(uint64_t cycle, uint epoch);
 	

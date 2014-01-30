@@ -227,7 +227,7 @@ bool Controller::addPacket(ChannelPacket *p){
 		return false;
 	    break;
 	default:
-	    ERROR("Illegal busPacketType " << p->busPacketType << " in Controller::receiveFromChannel\n");
+	    ERROR("Illegal busPacketType " << p->busPacketType << " in Controller::addPacket\n");
 	    break;
 	}
     
@@ -249,7 +249,7 @@ bool Controller::addPacket(ChannelPacket *p){
 	    case PRESET_WRITE:
 		break;
 	    default:
-		ERROR("Illegal busPacketType " << p->busPacketType << " in Controller::receiveFromChannel\n");
+		ERROR("Illegal busPacketType " << p->busPacketType << " in Controller::addPacket\n");
 		break;
 	    }
 	}
@@ -270,6 +270,52 @@ bool Controller::addPacket(ChannelPacket *p){
 		    log->log_ctrl_queue_event(false, p->package, &readQueues[p->package][p->die]);
 		}
 	    }
+	    return true;
+	}
+	else
+	{
+	    return false;
+	}
+    }
+}
+
+bool Controller::readdPacket(ChannelPacket *p)
+{
+    if(SCHEDULE)
+    {
+	// If there is not room in the command queue for this packet, then return false.
+	// If CTRL_QUEUE_LENGTH is 0, then infinite queues are allowed.
+	switch (p->busPacketType)
+	{
+        case WRITE:
+	case SET_WRITE:
+	case PRESET_WRITE:
+        case DATA:
+	     if ((writeQueues[p->package][p->die].size() < CTRL_WRITE_QUEUE_LENGTH) || (CTRL_WRITE_QUEUE_LENGTH == 0))
+	     {
+		 list<ChannelPacket *>::iterator it;
+		 it = writeQueues[p->package][p->die].begin();
+		 it++;
+		 writeQueues[p->package][p->die].insert(it,p);
+	     }
+	     else
+	         return false;
+	     break;
+	default:
+	    ERROR("Illegal busPacketType " << p->busPacketType << " in Controller::readdPacket\n");
+	    break;
+	}
+	return true;
+    }
+    // Not scheduling so everything goes to the read queue
+    else
+    {
+	if ((readQueues[p->package][p->die].size() < CTRL_READ_QUEUE_LENGTH) || (CTRL_READ_QUEUE_LENGTH == 0))
+	{
+	    list<ChannelPacket *>::iterator it;
+	    it = readQueues[p->package][p->die].begin();
+	    it++;
+	    readQueues[p->package][p->die].insert(it,p);
 	    return true;
 	}
 	else
@@ -451,30 +497,35 @@ void Controller::update(void){
 	    {
 		if (!readQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
 		    // check the status of the die
-		    int status = (*packages)[i].dies[die_pointers[i]]->isDieBusy(readQueues[i][die_pointers[i]].front()->plane);
-		    //cout << "status for die " << (*packages)[i].dies[die_pointers[i]]->id << " is " << status << "\n";
-
-		    // if the die/plane is writing and we have a read waiting then see how far into this iteration
-		    if((status == 2 || status == 6) && readQueues[i][die_pointers[i]].front()->busPacketType == READ)
+		    // ***** This is the write cancelation and write pausing stuff ************************************************************************************
+		    if(WRITE_PAUSING || WRITE_CANCELATION)
 		    {
-			uint writeIterationCyclesLeft = (*packages)[i].dies[die_pointers[i]]->returnWriteIterationCycle(readQueues[i][die_pointers[i]].front()->plane);
-			cout << "write iteration cycles left " << writeIterationCyclesLeft << "\n";
-
-			uint64_t currentWriteBlock = (*packages)[i].dies[die_pointers[i]]->returnWriteBlock(readQueues[i][die_pointers[i]].front()->plane);
-
-			//if we're far enough into a write iteration, then attempt a pause
-			// if this read is accessing the same block, then we need to cancel the write
-			if(writeIterationCyclesLeft < (WRITE_ITERATION_CYCLES/2) && currentWriteBlock != readQueues[i][die_pointers[i]].front()->block)
+			int status = (*packages)[i].dies[die_pointers[i]]->isDieBusy(readQueues[i][die_pointers[i]].front()->plane);		   
+			
+			// if the die/plane is writing and we have a read waiting then see how far into this iteration		    
+			if((status == 2 || status == 6) && readQueues[i][die_pointers[i]].front()->busPacketType == READ)
 			{
-			    if(writeIterationCyclesLeft == 0)
+			    uint64_t currentWritePAddr = (*packages)[i].dies[die_pointers[i]]->returnCurrentPAddr(readQueues[i][die_pointers[i]].front()->plane);
+			    
+			    // also make sure that we don't have a read after write hazard here
+			    if(readQueues[i][die_pointers[i]].front()->physicalAddress != currentWritePAddr)
 			    {
-				success = (*packages)[i].dies[die_pointers[i]]->writePause(readQueues[i][die_pointers[i]].front()->plane);
+				uint writeIterationCyclesLeft = (*packages)[i].dies[die_pointers[i]]->returnWriteIterationCycle(readQueues[i][die_pointers[i]].front()->plane);	
+				uint64_t currentWriteBlock = (*packages)[i].dies[die_pointers[i]]->returnCurrentBlock(readQueues[i][die_pointers[i]].front()->plane);
+				
+				//if we're far enough into a write iteration, then attempt a pause
+				// if this read is accessing the same block, then we need to cancel the write
+				if(writeIterationCyclesLeft < (WRITE_ITERATION_CYCLES/2) && currentWriteBlock != readQueues[i][die_pointers[i]].front()->block &&
+				    WRITE_PAUSING)
+				{
+				    success = (*packages)[i].dies[die_pointers[i]]->writePause(readQueues[i][die_pointers[i]].front()->plane);
+				}
+				// if we've still got a ways to go with this write or we're using the same block, go ahead and cancel it
+				else if(WRITE_CANCELATION)
+				{
+				    success = (*packages)[i].dies[die_pointers[i]]->writeCancel(readQueues[i][die_pointers[i]].front()->plane);
+				}
 			    }
-			}
-			// if we've still got a ways to go with this write or we're using the same block, go ahead and cancel it
-			else
-			{
-			    success = (*packages)[i].dies[die_pointers[i]]->writeCancel(readQueues[i][die_pointers[i]].front()->plane);
 			}
 		    }
 		    

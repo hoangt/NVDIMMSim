@@ -64,7 +64,8 @@ namespace NVDSim{
 			bool writePause(uint64_t plane);
 			bool writeResume(uint64_t plane);
 			bool writeCancel(uint64_t plane);
-			uint64_t returnWriteBlock(uint64_t plane);
+			uint64_t returnCurrentBlock(uint64_t plane);
+			uint64_t returnCurrentPAddr(uint64_t plane);
 
 			// for fast forwarding
 			void writeToPlane(ChannelPacket *packet);

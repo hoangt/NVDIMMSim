@@ -154,3 +154,16 @@ void Plane::dataGone(void)
     // read no longer needs this register
     cacheReg = NULL;
 }
+
+void Plane::clearWrite(void)
+{
+    if(dataReg != NULL)
+    {
+	dataReg = NULL;
+    }
+    else
+    {
+	ERROR("tried to clear write data but there was no data in the data register");
+	abort();
+    }
+}

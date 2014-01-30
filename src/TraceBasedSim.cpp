@@ -168,8 +168,8 @@ void test_obj::run_test(void){
 	  if(!waiting){
 	      t = FlashTransaction(DATA_WRITE, write_addr, (void *)0xdeadbeef);
 	      result = (*NVDimm).add(t);
-	      t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
-	      result = (*NVDimm).add(t);
+	      //t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
+	      //result = (*NVDimm).add(t);
 	      
 	      if(result == 1)
 	      {
@@ -192,9 +192,12 @@ void test_obj::run_test(void){
 	      }
 	  }
 
-	  if(writes % 2 == 0)
+	  if(write_addr > 4096 && result == 1)
 	  {
-	      t = FlashTransaction(PRESET_PAGE, write_addr, (void *)0xdeadbeef);
+	      //t = FlashTransaction(PRESET_PAGE, write_addr, (void *)0xdeadbeef);
+	      //result = (*NVDimm).add(t);
+	      //cout << "Read address is " << write_addr-NV_PAGE_SIZE << "\n";
+	      t = FlashTransaction(DATA_READ, write_addr-(2*NV_PAGE_SIZE), (void *)0xdeadbeef);
 	      result = (*NVDimm).add(t);
 	  }
 

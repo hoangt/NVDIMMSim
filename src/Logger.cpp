@@ -284,6 +284,27 @@ void Logger::access_stop(uint64_t addr, uint64_t paddr)
 	}
 }
 
+// this is used by write cancelation to undo the access process for a canceled write
+void Logger::access_cancel(uint64_t addr, uint64_t paddr)
+{
+    // get the entry for the write we're undoing
+    AccessMapEntry a = access_map[addr][paddr].front();
+
+    // readd the operation to the access queue
+    access_queue.push_back(pair <uint64_t, uint64_t>(addr, a.start));
+    
+    // remove the operation from the access map
+    access_map[addr][paddr].pop_front();
+    if(access_map[addr][paddr].empty())
+    {
+	access_map[addr].erase(paddr);
+	if(access_map.count(addr) == 0)
+	{
+	    access_map.erase(addr);
+	}
+    }
+}
+
 void Logger::log_ftl_queue_event(bool write, std::list<FlashTransaction> *queue)
 {
     if(!write)
