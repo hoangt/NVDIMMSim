@@ -77,17 +77,17 @@ namespace NVDSim{
 			Buffer *buffer;
 			Logger *log;
 			bool sending;
-			uint dataCyclesLeft; //cycles per device beat
-			uint deviceBeatsLeft; //device beats per page
-			uint critBeat; //device beat when first cache line will have been sent, used for crit line first
+			uint64_t dataCyclesLeft; //cycles per device beat
+			uint64_t deviceBeatsLeft; //device beats per page
+			uint64_t critBeat; //device beat when first cache line will have been sent, used for crit line first
 			std::queue<ChannelPacket *> returnDataPackets;
 			std::queue<ChannelPacket *> pendingDataPackets;
 			std::vector<Plane> planes;
 			std::vector<ChannelPacket *> currentCommands;
 			std::vector<ChannelPacket *> pausedCommands;
-			uint* pausedCyclesLeft;
-			uint* controlCyclesLeft;
-			uint* writeIterationCyclesLeft;
+			uint64_t *pausedCyclesLeft;
+			uint64_t *controlCyclesLeft;
+			uint64_t *writeIterationCyclesLeft;
 	};
 }
 #endif

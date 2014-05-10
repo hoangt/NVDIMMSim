@@ -48,6 +48,7 @@
 #include <stdint.h>
 #include <limits.h>
 
+#include "Util.h"
 
 //sloppily reusing #defines from dramsim
 #ifndef ERROR
@@ -113,22 +114,22 @@ enum WearLevelingScheme
 // Scheduling Options
 extern bool SCHEDULE;
 extern bool WRITE_ON_QUEUE_SIZE;
-extern uint WRITE_QUEUE_LIMIT;
+extern uint64_t WRITE_QUEUE_LIMIT;
 extern bool IDLE_WRITE;
 extern bool DELAY_WRITE;
-extern uint DELAY_WRITE_CYCLES;
+extern uint64_t DELAY_WRITE_CYCLES;
 extern bool FTL_QUEUE_HANDLING;
 
 // Wear Leveling Options
 extern std::string WEAR_LEVELING_SCHEME;
 extern WearLevelingScheme wearLevelingScheme;
-extern uint GAP_WRITE_INTERVAL;
+extern uint64_t GAP_WRITE_INTERVAL;
 extern bool RANDOM_ADDR;
 
 // Write blocking avoidance
 extern bool WRITE_PAUSING;
 extern bool WRITE_CANCELATION;
-extern uint WRITE_ITERATION_CYCLES; // the time it takes to do one iteration of an MLC write
+extern uint64_t WRITE_ITERATION_CYCLES; // the time it takes to do one iteration of an MLC write
 
 // SSD Options
 extern bool DISK_READ;
@@ -186,9 +187,9 @@ extern uint64_t REQUEST_CHANNEL_WIDTH;
 // does the device use garbage collection 
 extern bool GARBAGE_COLLECT;
 extern bool PRESTATE;
-extern uint PERCENT_DIRTY;
 
 #define GC GARBAGE_COLLECT
+extern float PERCENT_FULL;
 
 extern float IDLE_GC_THRESHOLD;
 extern float FORCE_GC_THRESHOLD;
@@ -205,22 +206,28 @@ extern float PBLOCKS_PER_VBLOCK;
 #define VIRTUAL_PACKAGE_SIZE (NV_PAGE_SIZE * DIES_PER_PACKAGE * PLANES_PER_DIE * VIRTUAL_BLOCKS_PER_PLANE * PAGES_PER_BLOCK)
 #define VIRTUAL_TOTAL_SIZE (NV_PAGE_SIZE * NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * VIRTUAL_BLOCKS_PER_PLANE * PAGES_PER_BLOCK)
 
-extern uint READ_TIME;
-extern uint WRITE_TIME;
-extern uint ERASE_TIME;
-extern uint COMMAND_LENGTH; //in bits, including address
-extern uint LOOKUP_TIME;
-extern uint BUFFER_LOOKUP_TIME;
-extern uint QUEUE_ACCESS_TIME; //time it takes to read data out of the write queue
+extern uint64_t READ_TIME;
+#define READ_CYCLES (divide_params_64b(READ_TIME, CYCLE_TIME))
+extern uint64_t WRITE_TIME;
+#define WRITE_CYCLES (divide_params_64b(WRITE_TIME, CYCLE_TIME))
+extern uint64_t ERASE_TIME;
+#define ERASE_CYCLES (divide_params_64b(ERASE_TIME, CYCLE_TIME))
+extern uint64_t COMMAND_LENGTH; //in bits, including address
+extern uint64_t LOOKUP_TIME;
+#define LOOKUP_CYCLES (divide_params_64b(LOOKUP_TIME, CYCLE_TIME))
+extern uint64_t BUFFER_LOOKUP_TIME;
+#define BUFFER_LOOKUP_CYCLES (divide_params_64b(BUFFER_LOOKUP_TIME, CHANNEL_CYCLE)) // we use chcannel cycles here cause that is how the buffer is updated
+extern uint64_t QUEUE_ACCESS_TIME; //time it takes to read data out of the write queue
+#define QUEUE_ACCESS_CYCLES (divide_params_64b(QUEUE_ACCESS_TIME, CYCLE_TIME))
 // in nanoseconds
 extern float CYCLE_TIME;
 extern float SYSTEM_CYCLE;
 
-extern uint EPOCH_TIME;
-#define USE_EPOCHS (EPOCH_TIME > 0)
-extern uint FTL_QUEUE_LENGTH;
-extern uint CTRL_READ_QUEUE_LENGTH;
-extern uint CTRL_WRITE_QUEUE_LENGTH;
+extern uint64_t EPOCH_CYCLES;
+#define USE_EPOCHS (EPOCH_CYCLES > 0)
+extern uint64_t FTL_QUEUE_LENGTH;
+extern uint64_t CTRL_READ_QUEUE_LENGTH;
+extern uint64_t CTRL_WRITE_QUEUE_LENGTH;
 
 // Power stuff
 extern double READ_I;
@@ -239,9 +246,9 @@ extern double VPP_WRITE_I;
 extern double VPP_ERASE_I;
 extern double VPP;
 
-extern uint OUTPUT;
+extern bool OUTPUT;
 
 //namespace NVDSim{
-	typedef void (*returnCallBack_t)(uint id, uint64_t addr, uint64_t clockcycle);
+	typedef void (*returnCallBack_t)(uint64_t id, uint64_t addr, uint64_t clockcycle);
 }
 #endif

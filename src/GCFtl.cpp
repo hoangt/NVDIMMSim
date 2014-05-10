@@ -90,7 +90,7 @@ void GCFtl::addGcTransaction(FlashTransaction &t){
 }
 
 void GCFtl::update(void){
-	uint i;
+	uint64_t i;
 	if (gc_status){
 		if (!panic_mode && parent->numErases == start_erase + 1)
 			gc_status = 0;
@@ -209,7 +209,7 @@ void GCFtl::update(void){
 		if (!gcQueue.empty()) {
 		    busy = 1;
 		    currentTransaction = gcQueue.front();
-		    lookupCounter = LOOKUP_TIME;
+		    lookupCounter = LOOKUP_CYCLES;
 		}
 		// do nothing
 		else
@@ -222,7 +222,7 @@ void GCFtl::update(void){
 		if (!transQueue.empty()) {
 		    busy = 1;
 		    currentTransaction = transQueue.front();
-		    lookupCounter = LOOKUP_TIME;
+		    lookupCounter = LOOKUP_CYCLES;
 		}
 		// do nothing
 		else
@@ -235,7 +235,7 @@ void GCFtl::update(void){
 	    // Check to see if GC needs to run.
 	    // just using lookupCounter here as an indicator or whether or not something was done 
 	    // before we got here
-	    if (lookupCounter != LOOKUP_TIME && checkGC() && !gc_status && dirty_page_count != 0)
+	    if (lookupCounter != LOOKUP_CYCLES && checkGC() && !gc_status && dirty_page_count != 0)
 	    {
 		// Run the GC.
 		start_erase = parent->numErases;
@@ -373,7 +373,6 @@ void GCFtl::sendQueueLength(void)
 	    log->ftlQueueLength(transQueue.size(), gcQueue.size());
 	}
 }
-
 
 void GCFtl::GCReadDone(uint64_t vAddr)
 {

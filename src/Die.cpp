@@ -56,14 +56,13 @@ Die::Die(NVDIMM *parent, Logger *l, uint64_t idNum){
 
 	dataCyclesLeft = 0;
 	deviceBeatsLeft = 0;
-	controlCyclesLeft = new uint[PLANES_PER_DIE];
-	pausedCyclesLeft = new uint[PLANES_PER_DIE];
-	writeIterationCyclesLeft = new uint[PLANES_PER_DIE];
-	
+	controlCyclesLeft = new uint64_t[PLANES_PER_DIE];
+	pausedCyclesLeft = new uint64_t[PLANES_PER_DIE];
+	writeIterationCyclesLeft = new uint64_t[PLANES_PER_DIE];
 
 	currentClockCycle = 0;
 
-	critBeat = ((divide_params((NV_PAGE_SIZE*8),DEVICE_WIDTH)-divide_params((uint)512,DEVICE_WIDTH)) * DEVICE_CYCLE) / CYCLE_TIME; // cache line is 64 bytes
+	critBeat = ((divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH)-divide_params_64b((uint64_t)512,DEVICE_WIDTH)) * DEVICE_CYCLE) / CYCLE_TIME; // cache line is 64 bytes
 }
 
 void Die::attachToBuffer(Buffer *buff){
@@ -84,7 +83,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			case READ:
 		        case GC_READ:
 			        planes[busPacket->plane].read(busPacket);
-				controlCyclesLeft[busPacket->plane]= READ_TIME;
+				controlCyclesLeft[busPacket->plane]= READ_CYCLES;
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
 				{
@@ -102,8 +101,9 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			case GC_WRITE:
 			        planes[busPacket->plane].write(busPacket);
 				parentNVDIMM->numWrites++;			
-				controlCyclesLeft[busPacket->plane]= WRITE_TIME;
+				controlCyclesLeft[busPacket->plane]= WRITE_CYCLES;
 				writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
+
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
 				{
@@ -141,7 +141,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			case ERASE:
 			        planes[busPacket->plane].erase(busPacket);
 			        parentNVDIMM->numErases++;
-			        controlCyclesLeft[busPacket->plane]= ERASE_TIME;
+			        controlCyclesLeft[busPacket->plane]= ERASE_CYCLES;
 
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
@@ -314,8 +314,8 @@ void Die::update(void){
 		   (buffer->dataReady(returnDataPackets.front()->die, returnDataPackets.front()->plane) == false ||
 		    currentCommands[returnDataPackets.front()->plane] != NULL))
 		{
-		    dataCyclesLeft = divide_params(DEVICE_CYCLE,CYCLE_TIME);
-		    deviceBeatsLeft = divide_params((NV_PAGE_SIZE*8),DEVICE_WIDTH);
+		    dataCyclesLeft = divide_params_64b(DEVICE_CYCLE,CYCLE_TIME);
+		    deviceBeatsLeft = divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH);
 		    sending = true;
 		}
 		    
@@ -325,7 +325,7 @@ void Die::update(void){
 		    if(success == true)
 		    {
 			deviceBeatsLeft--;
-			dataCyclesLeft = divide_params(DEVICE_CYCLE,CYCLE_TIME);
+			dataCyclesLeft = divide_params_64b(DEVICE_CYCLE,CYCLE_TIME);
 		    }
 		    else
 		    {
@@ -368,7 +368,7 @@ void Die::update(void){
 		    {
 			if(buffer->channel->obtainChannel(id, BUFFER, NULL))
 			{
-			    dataCyclesLeft = (divide_params((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME;
+			    dataCyclesLeft = (divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME;
 			}
 		    }
 		}
@@ -484,26 +484,44 @@ bool Die::writeCancel(uint64_t plane)
 	{
 	    // add the data packet back to the controller queue
 	    bool temp = buffer->channel->controller->readdPacket(currentCommands[plane]);
-	    ChannelPacket *dataPacket = new ChannelPacket(DATA, currentCommands[plane]->virtualAddress, currentCommands[plane]->physicalAddress, currentCommands[plane]->page, 
-							  currentCommands[plane]->block, currentCommands[plane]->plane, currentCommands[plane]->die, currentCommands[plane]->package,
-							  NULL);
-	    temp = buffer->channel->controller->readdPacket(dataPacket);
-
-	    // have to reset the logger for this write
-	    if (LOGGING)
+	    
+	    // don't add the next packet if the first packet fails
+	    if(temp == true)
 	    {
-		log->access_cancel(currentCommands[plane]->virtualAddress, currentCommands[plane]->physicalAddress);
+		ChannelPacket *dataPacket = new ChannelPacket(DATA, currentCommands[plane]->virtualAddress, currentCommands[plane]->physicalAddress, currentCommands[plane]->page, 
+							      currentCommands[plane]->block, currentCommands[plane]->plane, currentCommands[plane]->die, currentCommands[plane]->package,
+							      NULL);
+		temp = buffer->channel->controller->readdPacket(dataPacket);
+
+		// only remove the write if everything worked
+		if(temp == true)
+		{
+		  
+		  // have to reset the logger for this write
+		  if (LOGGING)
+		  {
+		      log->access_cancel(currentCommands[plane]->virtualAddress, currentCommands[plane]->physicalAddress);
+		  }
+
+		  // reset the current command to be ready for the incoming demand read
+		  currentCommands[plane] = NULL;
+		  controlCyclesLeft[plane] = 0;
+
+		  // also have to clear the data on the plane
+		  planes[plane].clearWrite();
+		  
+		  // cancel operation worked
+		  return true;
+		}
+		else
+		{
+		  return false;
+		}
 	    }
-
-	    // reset the current command to be ready for the incoming demand read
-	    currentCommands[plane] = NULL;
-	    controlCyclesLeft[plane] = 0;
-
-	    // also have to clear the data on the plane
-	    planes[plane].clearWrite();
-
-            // cancel operation worked
-	    return true;
+	    else
+	    {
+	      return false;
+	    }
 	}
 	else
 	{

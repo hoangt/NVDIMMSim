@@ -60,7 +60,7 @@ namespace NVDSim
 	void ftlQueueLength(uint64_t length, uint64_t length2);
 	void ftlQueueReset(void);
 	
-	void save(uint64_t cycle, uint epoch);
+	void save(uint64_t cycle, uint64_t epoch);
 	void print(uint64_t cycle);
 
 	void update();
@@ -71,7 +71,7 @@ namespace NVDSim
 	//Writing correct object oriented code up in this piece, what now?
 	std::vector<std::vector<double>> getEnergyData(void);
 	
-	void save_epoch(uint64_t cycle, uint epoch);
+	void save_epoch(uint64_t cycle, uint64_t epoch);
 
 	// State
 	uint64_t num_erases;
@@ -169,7 +169,8 @@ namespace NVDSim
 	// Store the data from each epoch for printing at the end of the simulation
 	std::list<EpochEntry> epoch_queue;
 
-	void write_epoch(EpochEntry *e);
+	using Logger::write_epoch; // This is to make Clang happy since Logger::EpochEntry is different from GCLogger::EpochEntry.
+	virtual void write_epoch(EpochEntry *e);
     };   
 }
 

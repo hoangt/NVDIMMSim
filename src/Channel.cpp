@@ -42,7 +42,7 @@ using namespace NVDSim;
 
 Channel::Channel(uint64_t i){
         id = i;
-	sender = -1;
+	sender = ULLONG_MAX;
 	busy = 0;
 
 	firstCheck = 0;
@@ -56,7 +56,7 @@ void Channel::attachController(Controller *c){
 	controller = c;
 }
 
-int Channel::obtainChannel(uint s, SenderType t, ChannelPacket *p){
+int Channel::obtainChannel(uint64_t s, SenderType t, ChannelPacket *p){
     if( p ==  NULL && t == CONTROLLER)
     {
 	cout << "something weird happened \n";
@@ -66,7 +66,7 @@ int Channel::obtainChannel(uint s, SenderType t, ChannelPacket *p){
     // we cannot send data or commands to a die that is busy or does not have the reg room for the data
     // the different isDieBusy numbers correspond to different plane states, more information about this function
     // and its return values can be found in Die.cpp
-    if ((sender != -1) ||
+    if ((sender != ULLONG_MAX) ||
 	(t == CONTROLLER && !BUFFERED && (buffer->dies[p->die]->isDieBusy(p->plane) == 1)) ||
 	// should allow us to send write data to a buffer that is currently writing
 	(t == CONTROLLER && !BUFFERED && p->busPacketType != DATA && buffer->dies[p->die]->isDieBusy(p->plane) == 2) ||
@@ -84,22 +84,22 @@ int Channel::obtainChannel(uint s, SenderType t, ChannelPacket *p){
     else
     {
 	sType = t;
-	sender = (int) s;
+	sender = s;
 	return 1;
     }
     return 0;
 }
 
-int Channel::releaseChannel(SenderType t, uint s){       
-	if (t == sType && sender == (int) s){
-		sender = -1;
+int Channel::releaseChannel(SenderType t, uint64_t s){       
+	if (t == sType && sender == s){
+		sender = ULLONG_MAX;
 		return 1;
 	}
 	return 0;
 }
 
-int Channel::hasChannel(SenderType t, uint s){
-	if (t == sType && sender == (int) s)
+int Channel::hasChannel(SenderType t, uint64_t s){
+	if (t == sType && sender == s)
 		return 1;
 	return 0;
 }
@@ -112,14 +112,14 @@ void Channel::sendToController(ChannelPacket *busPacket){
         controller->receiveFromChannel(busPacket);
 }
 
-void Channel::sendPiece(SenderType t, uint type, uint die, uint plane){
+void Channel::sendPiece(SenderType t, int type, uint64_t die, uint64_t plane){
 	busy = 1;
 	currentDie = die;
 	currentPlane = plane;
 	packetType = type;
 }
 
-bool Channel::isBufferFull(SenderType t, ChannelPacketType bt, uint die)
+bool Channel::isBufferFull(SenderType t, ChannelPacketType bt, uint64_t die)
 {
     return buffer->isFull(t, bt, die);
 }

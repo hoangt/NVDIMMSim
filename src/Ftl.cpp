@@ -94,13 +94,13 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 
 	// the maximum amount of time we can wait before we're sure we've deadlocked
 	// time it takes to read all of the pages in a block
-	deadlock_time = PAGES_PER_BLOCK * (READ_TIME + ((divide_params((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME) +
-					   ((divide_params(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME));
+	deadlock_time = PAGES_PER_BLOCK * (READ_CYCLES + ((divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME) +
+					   ((divide_params_64b(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME));
 	// plus the time it takes to write all of the pages in a block
-	deadlock_time += PAGES_PER_BLOCK * (WRITE_TIME + ((divide_params((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME) +
-					   ((divide_params(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME));
+	deadlock_time += PAGES_PER_BLOCK * (WRITE_CYCLES + ((divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME) +
+					   ((divide_params_64b(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME));
 	// plus the time it takes to erase the block
-	deadlock_time += ERASE_TIME + ((divide_params(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME);
+	deadlock_time += ERASE_CYCLES + ((divide_params_64b(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME);
 
 	write_wait_count = DELAY_WRITE_CYCLES;
 
@@ -134,11 +134,11 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 
 ChannelPacket *Ftl::translate(ChannelPacketType type, uint64_t vAddr, uint64_t pAddr){
 
-	uint package, die, plane, block, page;
+	uint64_t package, die, plane, block, page;
 	//uint64_t tempA, tempB, physicalAddress = pAddr;
 	uint64_t physicalAddress = pAddr;
 
-	if (physicalAddress > TOTAL_SIZE - 1 || physicalAddress < 0){
+	if (physicalAddress > TOTAL_SIZE - 1){
 		ERROR("Inavlid address in Ftl: "<<physicalAddress);
 		exit(1);
 	}
@@ -249,7 +249,7 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 
 bool Ftl::addTransaction(FlashTransaction &t){
     // if we're using start gap then we have to exclude an extra page from the address space
-    if(t.address < VIRTUAL_TOTAL_SIZE)
+    if(t.address < VIRTUAL_TOTAL_SIZE*1024)
     {
 	// we are going to favor reads over writes
 	// so writes get put into a special lower prioirty queue
@@ -344,7 +344,7 @@ void Ftl::update(void){
 		if (!transQueue.empty()) {
 		    busy = 1;
 		    currentTransaction = transQueue.front();
-		    lookupCounter = LOOKUP_TIME;
+		    lookupCounter = LOOKUP_CYCLES;
 		}
 	}
 
@@ -1037,13 +1037,13 @@ void Ftl::sendQueueLength(void)
 // function to set the NVM as more dirty as if it'd been running for a long time
 void Ftl::preDirty(void)
 {
-    if(PERCENT_DIRTY > 0 && !dirtied)
+    if(PERCENT_FULL > 0 && !dirtied)
     {
 	// use virtual blocks here so we don't deadlock the entire NVM
 	uint numBlocks = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * VIRTUAL_BLOCKS_PER_PLANE;
-	for(uint i = 0; i < numBlocks; i++)
+	for(uint64_t i = 0; i < numBlocks; i++)
 	{
-	    for(uint j = 0; j < (PAGES_PER_BLOCK*(PERCENT_DIRTY/100)); j++)
+	    for(uint64_t j = 0; j < (PAGES_PER_BLOCK*(PERCENT_FULL/100)); j++)
 	    {
 		dirty[i][j] = true;
 		dirty_page_count++;
@@ -1079,9 +1079,9 @@ void Ftl::saveNVState(void)
 
         // save the dirty table
 	save_file << "Dirty \n";
-	for(uint i = 0; i < dirty.size(); i++)
+	for(uint64_t i = 0; i < dirty.size(); i++)
 	{
-	    for(uint j = 0; j < dirty[i].size(); j++)
+	    for(uint64_t j = 0; j < dirty[i].size(); j++)
 	    {
 		save_file << dirty[i][j] << " ";
 	    }
@@ -1090,10 +1090,10 @@ void Ftl::saveNVState(void)
 
 	// save the used table
 	save_file << "Used";
-	for(uint i = 0; i < used.size(); i++)
+	for(uint64_t i = 0; i < used.size(); i++)
 	{
 	    save_file << "\n";
-	    for(uint j = 0; j < used[i].size()-1; j++)
+	    for(uint64_t j = 0; j < used[i].size()-1; j++)
 	    {
 		save_file << used[i][j] << " ";
 	    }

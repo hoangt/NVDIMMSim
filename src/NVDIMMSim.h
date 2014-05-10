@@ -20,8 +20,8 @@ using std::string;
 
 namespace NVDSim
 {
-    typedef CallbackBase<void,uint,uint64_t,uint64_t,bool> Callback_t;
-    typedef CallbackBase<void,uint,std::vector<std::vector<double> >,uint64_t,bool> Callback_v;
+    typedef CallbackBase<void,uint64_t,uint64_t,uint64_t,bool> Callback_t;
+    typedef CallbackBase<void,uint64_t,std::vector<std::vector<double> >,uint64_t,bool> Callback_v;
     class NVDIMM
     {
     public:
@@ -36,7 +36,7 @@ namespace NVDSim
 	void loadNVState(string filename);
     };
 
-    NVDIMM *getNVDIMMInstance(uint id, string deviceFile, string sysFile, string pwd, string trc);
+    NVDIMM *getNVDIMMInstance(uint64_t id, string deviceFile, string sysFile, string pwd, string trc);
 }
 
 #endif

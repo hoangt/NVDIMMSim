@@ -57,7 +57,7 @@ namespace NVDSim{
 			void clearWrite(void);
 		private:
 			ChannelPacket *dataReg, *cacheReg;
-			std::unordered_map<uint, Block> blocks;
+			std::unordered_map<uint64_t, Block> blocks;
 	};
 }
 #endif

@@ -127,12 +127,11 @@ namespace NVDSim{
 			FlashTransaction writeTransaction;
 
 			bool gc_flag;
-			uint offset,  pageBitWidth, blockBitWidth, planeBitWidth, dieBitWidth, packageBitWidth;
 			uint64_t channel, die, plane, lookupCounter;
 			uint64_t temp_channel, temp_die, temp_plane;
 			uint64_t max_queue_length;
 			FlashTransaction currentTransaction;
-			uint busy;
+			bool busy;
 
 			uint64_t deadlock_counter;
 			uint64_t deadlock_time;
@@ -159,7 +158,6 @@ namespace NVDSim{
 			uint64_t gap_write_vAddr; // we save this in case the ctrl queues are full and we need to reuse it
 			std::unordered_map<uint64_t,uint64_t> randomMap; // address map for the randomized version of start-gap
 			std::vector<uint64_t> randomAddrs; // vector of scrambled addresses
-			
 
 			std::unordered_map<uint64_t,uint64_t> addressMap; // address map for translation
 			std::vector<vector<bool>> used;

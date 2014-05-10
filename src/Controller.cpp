@@ -44,7 +44,7 @@ Controller::Controller(NVDIMM* parent, Logger* l){
 	parentNVDIMM = parent;
 	log = l;
 
-	channelBeatsLeft = vector<uint>(NUM_PACKAGES, 0);
+	channelBeatsLeft = vector<uint64_t>(NUM_PACKAGES, 0);
 
 	readQueues = vector<vector<list <ChannelPacket *> > >(NUM_PACKAGES, vector<list<ChannelPacket *> >(DIES_PER_PACKAGE, list<ChannelPacket * >()));
 	writeQueues = vector<vector<list <ChannelPacket *> > >(NUM_PACKAGES, vector<list<ChannelPacket *> >(DIES_PER_PACKAGE, list<ChannelPacket * >()));
@@ -97,7 +97,7 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 		vector<double> vpp_idle_energy, vector<double> vpp_access_energy, vector<double> vpp_erase_energy) {
 	if(parentNVDIMM->ReturnPowerData!=NULL){
 		vector<vector<double>> power_data = vector<vector<double>>(6, vector<double>(NUM_PACKAGES, 0.0));
-		for(uint i = 0; i < NUM_PACKAGES; i++)
+		for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 		{
 			power_data[0][i] = idle_energy[i] * VCC;
 			power_data[1][i] = access_energy[i] * VCC;
@@ -114,7 +114,7 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 		vector<double> vpp_access_energy) {
 	if(parentNVDIMM->ReturnPowerData!=NULL){
 		vector<vector<double>> power_data = vector<vector<double>>(4, vector<double>(NUM_PACKAGES, 0.0));
-		for(uint i = 0; i < NUM_PACKAGES; i++)
+		for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 		{
 			power_data[0][i] = idle_energy[i] * VCC;
 			power_data[1][i] = access_energy[i] * VCC;
@@ -128,7 +128,7 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 void Controller::returnPowerData(vector<double> idle_energy, vector<double> access_energy, vector<double> erase_energy) {
 	if(parentNVDIMM->ReturnPowerData!=NULL){
 		vector<vector<double>> power_data = vector<vector<double>>(3, vector<double>(NUM_PACKAGES, 0.0));
-		for(uint i = 0; i < NUM_PACKAGES; i++)
+		for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 		{
 			power_data[0][i] = idle_energy[i] * VCC;
 			power_data[1][i] = access_energy[i] * VCC;
@@ -141,7 +141,7 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 void Controller::returnPowerData(vector<double> idle_energy, vector<double> access_energy) {
 	if(parentNVDIMM->ReturnPowerData!=NULL){
 		vector<vector<double>> power_data = vector<vector<double>>(2, vector<double>(NUM_PACKAGES, 0.0));
-		for(uint i = 0; i < NUM_PACKAGES; i++)
+		for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 		{
 			power_data[0][i] = idle_energy[i] * VCC;
 			power_data[1][i] = access_energy[i] * VCC;
@@ -343,9 +343,7 @@ bool Controller::nextDie(uint64_t package)
     return 0;
 }
 
-void Controller::update(void){
-    bool success = false; // used for write pausing and cancelation
-    
+void Controller::update(void){    
     // schedule the next operation for each die
     if(SCHEDULE)
     {
@@ -374,8 +372,7 @@ void Controller::update(void){
 			    
 			    switch (outgoingPackets[i]->busPacketType){
 			    case DATA:
-				// Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
-				// are in 1 KB (1024 * 8).
+				// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
 				channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
 				break;
 			    default:
@@ -453,8 +450,7 @@ void Controller::update(void){
 			
 			switch (outgoingPackets[i]->busPacketType){
 			case DATA:
-			    // Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
-			    // are in 1 KB (1024 * 8).
+				// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
 			    channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
 			    break;
 			default:
@@ -518,12 +514,12 @@ void Controller::update(void){
 				if(writeIterationCyclesLeft < (WRITE_ITERATION_CYCLES/2) && currentWriteBlock != readQueues[i][die_pointers[i]].front()->block &&
 				    WRITE_PAUSING)
 				{
-				    success = (*packages)[i].dies[die_pointers[i]]->writePause(readQueues[i][die_pointers[i]].front()->plane);
+				    (*packages)[i].dies[die_pointers[i]]->writePause(readQueues[i][die_pointers[i]].front()->plane);
 				}
 				// if we've still got a ways to go with this write or we're using the same block, go ahead and cancel it
 				else if(WRITE_CANCELATION)
 				{
-				    success = (*packages)[i].dies[die_pointers[i]]->writeCancel(readQueues[i][die_pointers[i]].front()->plane);
+				    (*packages)[i].dies[die_pointers[i]]->writeCancel(readQueues[i][die_pointers[i]].front()->plane);
 				}
 			    }
 			}
@@ -554,29 +550,27 @@ void Controller::update(void){
 			}
 			readQueues[i][die_pointers[i]].pop_front();
 			parentNVDIMM->queuesNotFull();
-			if(FRONT_BUFFER)
+			if(BUFFERED)
 			{
-			    switch (outgoingPackets[i]->busPacketType){
+			  switch (outgoingPackets[i]->busPacketType){
 			    case DATA:
-				// Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
-				// are in 1 KB (1024 * 8).
-				channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),DEVICE_WIDTH); 
+				// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
+				channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
 				break;
 			    default:
-				channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,DEVICE_WIDTH);
+				channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
 				break;
-			    }
+			    }			    
 			}
 			else
 			{
 			    switch (outgoingPackets[i]->busPacketType){
 			    case DATA:
-				// Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
-				// are in 1 KB (1024 * 8).
-				channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
+				// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
+				channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),DEVICE_WIDTH); 
 				break;
 			    default:
-				channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+				channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,DEVICE_WIDTH);
 				break;
 			    }
 			}
@@ -730,9 +724,9 @@ bool Controller::dataReady(uint64_t package, uint64_t die, uint64_t plane)
 void Controller::sendQueueLength(void)
 {
     vector<vector<uint64_t> > temp = vector<vector<uint64_t> >(NUM_PACKAGES, vector<uint64_t>(DIES_PER_PACKAGE, 0));
-	for(uint i = 0; i < readQueues.size(); i++)
+	for(uint64_t i = 0; i < readQueues.size(); i++)
 	{
-	    for(uint j = 0; j < readQueues[i].size(); j++)
+	    for(uint64_t j = 0; j < readQueues[i].size(); j++)
 	    {
 		temp[i][j] = writeQueues[i][j].size();
 	    }
@@ -750,7 +744,7 @@ void Controller::writeToPackage(ChannelPacket *packet)
 
 void Controller::bufferDone(uint64_t package, uint64_t die, uint64_t plane)
 {
-	for (uint i = 0; i < pendingPackets.size(); i++){
+	for (uint64_t i = 0; i < pendingPackets.size(); i++){
 		std::list<ChannelPacket *>::iterator it;
 		for(it = pendingPackets[i].begin(); it != pendingPackets[i].end(); it++){
 		    if ((*it) != NULL && (*it)->package == package && (*it)->die == die && (*it)->plane == plane){

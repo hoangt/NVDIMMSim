@@ -44,7 +44,7 @@ using namespace std;
 
 namespace NVDSim
 {
-    NVDIMM::NVDIMM(uint id, string deviceFile, string sysFile, string pwd, string trc) :
+    NVDIMM::NVDIMM(uint64_t id, string deviceFile, string sysFile, string pwd, string trc) :
 	dev(deviceFile),
 	sys(sysFile),
 	cDirectory(pwd)
@@ -103,7 +103,7 @@ namespace NVDSim
 	PRINT("Plane Size: "<<PLANE_SIZE);
 	PRINT("Die Size: "<<DIE_SIZE);
 	PRINT("Package Size: "<<PACKAGE_SIZE);
-	PRINT("Total Size: "<<TOTAL_SIZE);
+	PRINT("Total Size (KB): "<<TOTAL_SIZE);
 	PRINT("Packages/Channels: "<<NUM_PACKAGES);
 	PRINT("Page size: "<<NV_PAGE_SIZE);
 	if(GARBAGE_COLLECT == 1)
@@ -151,10 +151,11 @@ namespace NVDSim
 	{
 	    PRINT("Device is using epoch data logging");
 	}
-	PRINT("Epoch Time: "<<EPOCH_TIME);
+	PRINT("Epoch Time: "<<EPOCH_CYCLES);
 	PRINT("");
-
-	if(GARBAGE_COLLECT == 0 && (DEVICE_TYPE.compare("NAND") == 0 || DEVICE_TYPE.compare("NOR") == 0))
+	
+	
+	if((GARBAGE_COLLECT == 0) && (DEVICE_TYPE.compare("NAND") == 0 || DEVICE_TYPE.compare("NOR") == 0))
 	{
 	  ERROR("Device is Flash and must use garbage collection");
 	  exit(-1);
@@ -315,7 +316,7 @@ namespace NVDSim
     }
 
 // static allocator for the library interface
-    NVDIMM *getNVDIMMInstance(uint id, string deviceFile, string sysFile, string pwd, string trc)
+    NVDIMM *getNVDIMMInstance(uint64_t id, string deviceFile, string sysFile, string pwd, string trc)
     {
 	return new NVDIMM(id, deviceFile, sysFile, pwd, trc);
     }
@@ -519,7 +520,7 @@ namespace NVDSim
 	    {
 		ftl->sendQueueLength();
 		controller->sendQueueLength();
-		if(epoch_cycles >= EPOCH_TIME)
+		if(epoch_cycles >= EPOCH_CYCLES)
 		{
 		    if(LOGGING == true)
 		    {
