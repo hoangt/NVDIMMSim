@@ -68,6 +68,8 @@ int Channel::obtainChannel(uint64_t s, SenderType t, ChannelPacket *p){
     // and its return values can be found in Die.cpp
     if ((sender != ULLONG_MAX) ||
 	(t == CONTROLLER && !BUFFERED && (buffer->dies[p->die]->isDieBusy(p->plane) == 1)) ||
+	// die is writing and there is no room in the cache register so just wait
+	(t == CONTROLLER && !BUFFERED && (buffer->dies[p->die]->isDieBusy(p->plane) == 6)) ||
 	// should allow us to send write data to a buffer that is currently writing
 	(t == CONTROLLER && !BUFFERED && p->busPacketType != DATA && buffer->dies[p->die]->isDieBusy(p->plane) == 2) ||
 	// should allow us to send a write command to a plane that has a loaded cache register
