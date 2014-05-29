@@ -127,8 +127,7 @@ namespace NVDSim{
 			FlashTransaction writeTransaction;
 
 			bool gc_flag;
-			uint64_t channel, die, plane, lookupCounter;
-			uint64_t temp_channel, temp_die, temp_plane;
+			uint64_t channel_pointer, die_pointer, plane_pointer, lookupCounter;
 			uint64_t max_queue_length;
 			FlashTransaction currentTransaction;
 			bool busy;

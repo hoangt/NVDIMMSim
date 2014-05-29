@@ -53,9 +53,9 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	    numBlocks = numBlocks + 1;
 	}
 
-	channel = 0;
-	die = 0;
-	plane = 0;
+	channel_pointer = 0;
+	die_pointer = 0;
+	plane_pointer = 0;
 	lookupCounter = 0;
 
 	busy = 0;
@@ -402,11 +402,11 @@ void Ftl::handle_disk_read(bool gc)
 	if(wearLevelingScheme == RoundRobin)
 	{
 	    //update "write pointer"
-	    channel = (channel + 1) % NUM_PACKAGES;
-	    if (channel == 0){
-		die = (die + 1) % DIES_PER_PACKAGE;
-		if (die == 0)
-		    plane = (plane + 1) % PLANES_PER_DIE;
+	    channel_pointer = (channel_pointer + 1) % NUM_PACKAGES;
+	    if (channel_pointer == 0){
+		die_pointer = (die_pointer + 1) % DIES_PER_PACKAGE;
+		if (die_pointer == 0)
+		    plane_pointer = (plane_pointer + 1) % PLANES_PER_DIE;
 	    }
 	}
 	//=============================================================================
@@ -585,7 +585,7 @@ write_location Ftl::round_robin_write_location(uint64_t vAddr)
     write_location loc;
 
     //look for first free physical page starting at the write pointer
-    addr_start = BLOCKS_PER_PLANE * (temp_plane + PLANES_PER_DIE * (temp_die + DIES_PER_PACKAGE * temp_channel));
+    addr_start = BLOCKS_PER_PLANE * (plane_pointer + PLANES_PER_DIE * (die_pointer + DIES_PER_PACKAGE * channel_pointer));
 	    
     // Search from the current write pointer to the end of the flash for a free page.
     for (block = addr_start ; block < TOTAL_SIZE / BLOCK_SIZE && !done; block++)
@@ -810,10 +810,6 @@ void Ftl::handle_write(bool gc)
     bool done = false;
     uint64_t block, page;
     write_location loc;
-
-    temp_channel = channel;
-    temp_die = die;
-    temp_plane = plane;
     uint64_t itr_count = 0;
 
     // Mapped is used to indicate to the logger that a write was mapped or unmapped.
@@ -908,11 +904,11 @@ void Ftl::handle_write(bool gc)
 	    if(itr_count == 0 && wearLevelingScheme == RoundRobin)
 	    {
 		//update "write pointer"
-		channel = (channel + 1) % NUM_PACKAGES;
-		if (channel == 0){
-		    die = (die + 1) % DIES_PER_PACKAGE;
-		    if (die == 0)
-			plane = (plane + 1) % PLANES_PER_DIE;
+		channel_pointer = (channel_pointer + 1) % NUM_PACKAGES;
+		if (channel_pointer == 0){
+		    die_pointer = (die_pointer + 1) % DIES_PER_PACKAGE;
+		    if (die_pointer == 0)
+			plane_pointer = (plane_pointer + 1) % PLANES_PER_DIE;
 		}
 	    }
 	}
@@ -922,7 +918,7 @@ void Ftl::handle_write(bool gc)
 uint64_t Ftl::get_ptr(void) {
 	// Return a pointer to the current plane.
 	return NV_PAGE_SIZE * PAGES_PER_BLOCK * BLOCKS_PER_PLANE * 
-		(plane + PLANES_PER_DIE * (die + NUM_PACKAGES * channel));
+		(plane_pointer + PLANES_PER_DIE * (die_pointer + NUM_PACKAGES * channel_pointer));
 }
 
 void Ftl::handle_trim(void)
