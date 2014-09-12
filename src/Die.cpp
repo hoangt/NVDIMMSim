@@ -63,27 +63,58 @@ Die::Die(NVDIMM *parent, Logger *l, uint64_t idNum){
 	currentClockCycle = 0;
 
 	critBeat = ((divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH)-divide_params_64b((uint64_t)512,DEVICE_WIDTH)) * DEVICE_CYCLE) / CYCLE_TIME; // cache line is 64 bytes
+
+	if(REFRESH_ENABLE)
+	{
+		// only need a plane refresh pointer
+		plane_rpointer = 0;
+		refreshing = vector<bool>(PLANES_PER_DIE, 0);
+		refresh_blocked = vector<bool>(PLANES_PER_DIE, 0);		
+	}
+	
+	// this stores the page number of the open row in the bank
+	open_row = vector<vector<uint64_t> >(PLANES_PER_DIE, vector<uint64_t>(BLOCKS_PER_PLANE, PAGES_PER_BLOCK+1));
 }
 
 void Die::attachToBuffer(Buffer *buff){
 	buffer = buff;
 }
 
+
+
 void Die::receiveFromBuffer(ChannelPacket *busPacket){
 	if (busPacket->busPacketType == DATA){
+	    cout << "got data for a write to plane " << busPacket->plane << "\n";
 		planes[busPacket->plane].storeInData(busPacket);
-	} else if (currentCommands[busPacket->plane] == NULL) {
-		currentCommands[busPacket->plane] = busPacket;
-		if (LOGGING)
+	} else if (currentCommands[busPacket->plane] == NULL || (busPacket->busPacketType == AUTO_REFRESH && currentCommands[plane_rpointer] == NULL)) {
+		if(busPacket->busPacketType != AUTO_REFRESH)
 		{
-			// Tell the logger the access has now been processed.		        
-			log->access_process(busPacket->virtualAddress, busPacket->physicalAddress, busPacket->package, busPacket->busPacketType);		
-		}
+			currentCommands[busPacket->plane] = busPacket;
+			if (LOGGING)
+			{
+				// Tell the logger the access has now been processed.		        
+				log->access_process(busPacket->virtualAddress, busPacket->physicalAddress, busPacket->package, busPacket->busPacketType);
+				
+				if(CONCURRENCY_LOG)
+				{
+					log->used_something(busPacket->package, busPacket->die, busPacket->plane, busPacket->block);
+				}
+			}
+		}		
 		switch (busPacket->busPacketType){
 			case READ:
 		        case GC_READ:
-			        planes[busPacket->plane].read(busPacket);
-				controlCyclesLeft[busPacket->plane]= READ_CYCLES;
+			    cout << "got a read for plane " << busPacket->plane << "\n";
+					planes[busPacket->plane].read(busPacket);
+					if(busPacket->page == open_row[busPacket->plane][busPacket->block] && OPEN_ROW_ENABLE)
+					{
+						controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
+					}
+					else
+					{						
+						controlCyclesLeft[busPacket->plane]= READ_CYCLES;
+						open_row[busPacket->plane][busPacket->block] = busPacket->page;
+					}
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
 				{
@@ -99,10 +130,19 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 				break;
 			case WRITE:
 			case GC_WRITE:
+			    cout << "got a write for plane " << busPacket->plane << "\n";
 			        planes[busPacket->plane].write(busPacket);
-				parentNVDIMM->numWrites++;			
-				controlCyclesLeft[busPacket->plane]= WRITE_CYCLES;
-				writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
+					parentNVDIMM->numWrites++;	
+					if(busPacket->page == open_row[busPacket->plane][busPacket->block] && OPEN_ROW_ENABLE)
+					{
+						controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
+					}
+					else
+					{
+						controlCyclesLeft[busPacket->plane]= WRITE_CYCLES;
+						open_row[busPacket->plane][busPacket->block] = busPacket->page;						
+					}
+					writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
 
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
@@ -200,6 +240,47 @@ int Die::isDieBusy(uint64_t plane){
     return 1;
 }
 
+void Die::testDieRefresh(uint64_t plane, uint64_t block, bool write)
+{
+	if(LOGGING && REFRESH_ENABLE && refreshing[plane] == true && !refresh_blocked[plane])
+	{
+		log->refresh_blocked(write, controlCyclesLeft[plane]);
+		refresh_blocked[plane] = true;
+	}
+}
+
+bool Die::canDieRefresh()
+{
+	if(refreshLevel == PerVault || refreshLevel == PerChannel)
+	{
+		uint64_t free_count = 0;
+		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		{
+			if(currentCommands[p] == NULL)
+				free_count++;
+		}
+		if(free_count == PLANES_PER_DIE)
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+	else
+	{
+		if(currentCommands[plane_rpointer] == NULL)
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+}
+
 void Die::update(void){
 	uint64_t i;
 	ChannelPacket *currentCommand;
@@ -212,45 +293,51 @@ void Die::update(void){
 
 				// Process each command based on the packet type.
 				switch (currentCommand->busPacketType){
-					case READ:
-					    if(planes[currentCommand->plane].checkCacheReg())
-					    {
+				case READ:
+					if(planes[currentCommand->plane].checkCacheReg())
+					{
 						returnDataPackets.push(planes[currentCommand->plane].readFromData());
 						no_reg_room = false;
-					    }
-					    else
-					    {
+					}
+					else
+					{
 						no_reg_room = true;
-					    }
-					    break;
-					case GC_READ:
-					    if(planes[currentCommand->plane].checkCacheReg())
-					    {
+					}
+					break;
+				case GC_READ:
+					if(planes[currentCommand->plane].checkCacheReg())
+					{
 						returnDataPackets.push(planes[currentCommand->plane].readFromData());
 						parentNVDIMM->GCReadDone(currentCommand->virtualAddress);
 						no_reg_room = false;
-					    }
-					    else
-					    {
+					}
+					else
+					{
 						no_reg_room = true;
-					    }
-					    break;
-					case WRITE:
-				        case SET_WRITE:
-					    //call write callback					   
-					    if (parentNVDIMM->WriteDataDone != NULL){
+					}
+					break;
+				case WRITE:
+				case SET_WRITE:
+					//call write callback					   
+					if (parentNVDIMM->WriteDataDone != NULL){
 						(*parentNVDIMM->WriteDataDone)(parentNVDIMM->systemID, currentCommand->virtualAddress, currentClockCycle,true);
-					    }
-					    planes[currentCommand->plane].writeDone(currentCommand);					    
-					    break;
-				        case GC_WRITE:
-					    break;
-					case ERASE:
-					    break;
-					case DATA:
-					    // Nothing to do.
-					default:
-					    break;
+					}
+					planes[currentCommand->plane].writeDone(currentCommand);					    
+					break;
+				case GC_WRITE:
+					break;
+				case ERASE:
+					break;
+				case AUTO_REFRESH:
+					refreshing[currentCommand->plane] = false;
+					refresh_blocked[currentCommand->plane] = false;							
+					break;
+				case SELF_REFRESH:
+					break;
+				case DATA:
+					// Nothing to do.
+				default:
+					break;
 				}
 
 				ChannelPacketType bpt = currentCommand->busPacketType;
@@ -271,6 +358,10 @@ void Die::update(void){
 					}
 
 					// Delete the memory allocated for the current command to prevent memory leaks.
+					delete currentCommand;
+				}
+				else if(bpt == AUTO_REFRESH)
+				{
 					delete currentCommand;
 				}
 
@@ -340,39 +431,61 @@ void Die::update(void){
 	    // not buffered
 	    else
 	    {
-		if(buffer->channel->hasChannel(BUFFER, id)){
-		    if(dataCyclesLeft == 0){
-			if(LOGGING && PLANE_STATE_LOG)
+			Channel* channel_pointer;
+			if(DEVICE_DATA_CHANNEL)
 			{
-			    log->log_plane_state(returnDataPackets.front()->virtualAddress, 
-						 returnDataPackets.front()->package, 
-						 returnDataPackets.front()->die, 
-						 returnDataPackets.front()->plane, 
-						 IDLE);
+				channel_pointer = buffer->data_channel;
 			}
-			planes[returnDataPackets.front()->plane].dataGone();
-			buffer->channel->sendToController(returnDataPackets.front());
-			buffer->channel->releaseChannel(BUFFER, id);		
-			returnDataPackets.pop();
-		    }
-		    if(CRIT_LINE_FIRST && dataCyclesLeft == critBeat)
-		    {
-			buffer->channel->controller->returnCritLine(returnDataPackets.front());
-		    }
-		    dataCyclesLeft--;
-		}else{
-		    // is there a read waiting for us and are we not doing something already
-		    if((buffer->channel->controller->dataReady(returnDataPackets.front()->package, returnDataPackets.front()->die, 
-							      returnDataPackets.front()->plane) == 0 ||
-			currentCommands[returnDataPackets.front()->plane] != NULL))
-		    {
-			if(buffer->channel->obtainChannel(id, BUFFER, NULL))
+			else
 			{
-			    dataCyclesLeft = (divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME;
+				channel_pointer = buffer->channel;
 			}
-		    }
+			if(channel_pointer->hasChannel(BUFFER, id)){
+				if(dataCyclesLeft == 0)
+				{
+					if(LOGGING && PLANE_STATE_LOG)
+					{
+						log->log_plane_state(returnDataPackets.front()->virtualAddress, 
+											 returnDataPackets.front()->package, 
+											 returnDataPackets.front()->die, 
+											 returnDataPackets.front()->plane, 
+											 IDLE);
+					}
+					planes[returnDataPackets.front()->plane].dataGone();
+					channel_pointer->sendToController(returnDataPackets.front());
+					channel_pointer->releaseChannel(BUFFER, id);		
+					returnDataPackets.pop();
+				}
+				if(CRIT_LINE_FIRST && dataCyclesLeft == critBeat)
+				{
+					channel_pointer->controller->returnCritLine(returnDataPackets.front());
+				}
+				dataCyclesLeft--;
+			}else{
+				// is there a read waiting for us and are we not doing something already
+				if(channel_pointer->controller->dataReady(returnDataPackets.front()->package, returnDataPackets.front()->die, returnDataPackets.front()->plane) == 0 ||
+				   currentCommands[returnDataPackets.front()->plane] != NULL)
+				{
+					if(channel_pointer->obtainChannel(id, BUFFER, NULL))
+					{
+						if(DEVICE_DATA_CHANNEL)
+						{
+							dataCyclesLeft = divide_params_64b(divide_params_64b((NV_PAGE_SIZE*8),DEVICE_DATA_WIDTH) * DEVICE_CYCLE, CYCLE_TIME);
+						}
+						else
+						{
+							dataCyclesLeft = divide_params_64b(divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE, CYCLE_TIME);
+						}
+
+						// bus turn around timing addition
+						if(CHANNEL_TURN_ENABLE && !channel_pointer->lastOwner(BUFFER))
+						{
+							dataCyclesLeft += CHANNEL_TURN_CYCLES;
+						}
+					}
+				}
+			}
 		}
-	    }
 	}
 }
 
@@ -537,12 +650,58 @@ bool Die::writeCancel(uint64_t plane)
 }
 
 // this returns that block that is currently being written to in a plane to check in the read would hit that same block
-uint64_t Die::returnCurrentBlock(uint64_t plane)
+bool Die::isCurrentBlock(uint64_t plane, uint64_t block)
 {
-    return currentCommands[plane]->block;
+	if(currentCommands[plane]->block == block)
+	{
+		return true;
+	}
+	return false;
 }
 
-uint64_t Die::returnCurrentPAddr(uint64_t plane)
+bool Die::isCurrentPAddr(uint64_t plane, uint64_t block, uint64_t physAddr)
 {
-  return currentCommands[plane]->physicalAddress;
+	if(currentCommands[plane]->physicalAddress == physAddr)
+	{
+		return true;
+	}
+	return false;
+}
+
+void Die::addRefreshes(ChannelPacket *packet)
+{
+	if(refreshLevel == PerVault || refreshLevel == PerChannel)
+	{
+		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		{
+			ChannelPacket *new_packet = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, p, packet->die, packet->package, NULL);
+			currentCommands[p] = new_packet;
+			controlCyclesLeft[p] = REFRESH_CYCLES;
+
+			refreshing[p] = true;
+		}
+		// delete the old packet to clean it up
+		delete packet;		
+	}
+	else
+	{
+		ChannelPacket *new_packet = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, plane_rpointer, packet->die, packet->package, NULL);
+		currentCommands[plane_rpointer] =new_packet;
+		controlCyclesLeft[plane_rpointer] = REFRESH_CYCLES;
+		refreshing[plane_rpointer] = true;
+
+		// delete the old packet to clean it up
+		delete packet;	
+	}
+	
+}
+
+void Die::updateRefreshPointer()
+{
+	//this only matters if we're just refreshing one bank at a time
+	plane_rpointer++;
+	if(plane_rpointer >= PLANES_PER_DIE)
+	{
+		plane_rpointer = 0;
+	}
 }

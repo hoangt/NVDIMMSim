@@ -73,7 +73,9 @@ namespace NVDSim
 		 exit(-1);
 	 }
 
-	Init::EnumsFromStrings();
+	Init::EnumsFromWearLevelStrings();
+	Init::EnumsFromRefreshStrings();
+	Init::EnumsFromAddressStrings();
 	
 	// this is where the overprovisioning happens
 	if(wearLevelingScheme == StartGap)
@@ -251,20 +253,42 @@ namespace NVDSim
 
 	// sanity checks
 	
-
-	for (i= 0; i < NUM_PACKAGES; i++){
-	    Package pack = {new Channel(i), new Buffer(i), vector<Die *>()};
-	    //pack.channel= new Channel();
-	    pack.channel->attachController(controller);
-	    pack.channel->attachBuffer(pack.buffer);
-	    pack.buffer->attachChannel(pack.channel);
-	    for (j= 0; j < DIES_PER_PACKAGE; j++){
-		Die *die= new Die(this, log, j);
-		die->attachToBuffer(pack.buffer);
-		pack.buffer->attachDie(die);
-		pack.dies.push_back(die);
-	    }
-	    packages->push_back(pack);
+	if(DEVICE_DATA_CHANNEL)
+	{
+		for (i= 0; i < NUM_PACKAGES; i++){
+			Package pack = {new Channel(i), new Channel(i), new Buffer(i), vector<Die *>()};
+			//pack.channel= new Channel();
+			pack.channel->attachController(controller);
+			pack.channel->attachBuffer(pack.buffer);
+			pack.buffer->attachChannel(pack.channel);
+			pack.data_channel->attachController(controller);
+			pack.data_channel->attachBuffer(pack.buffer);
+			pack.buffer->attachDataChannel(pack.data_channel);
+			for (j= 0; j < DIES_PER_PACKAGE; j++){
+				Die *die= new Die(this, log, j);
+				die->attachToBuffer(pack.buffer);
+				pack.buffer->attachDie(die);
+				pack.dies.push_back(die);
+			}
+			packages->push_back(pack);
+		}
+	}
+	else
+	{
+		for (i= 0; i < NUM_PACKAGES; i++){
+			Package pack = {new Channel(i), NULL, new Buffer(i), vector<Die *>()};
+			//pack.channel= new Channel();
+			pack.channel->attachController(controller);
+			pack.channel->attachBuffer(pack.buffer);
+			pack.buffer->attachChannel(pack.channel);
+			for (j= 0; j < DIES_PER_PACKAGE; j++){
+				Die *die= new Die(this, log, j);
+				die->attachToBuffer(pack.buffer);
+				pack.buffer->attachDie(die);
+				pack.dies.push_back(die);
+			}
+			packages->push_back(pack);
+		}
 	}
 	controller->attachPackages(packages);
 

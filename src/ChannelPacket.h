@@ -52,7 +52,9 @@ namespace NVDSim
 		DATA,
 		SET_WRITE,
 		PRESET_WRITE,
-		FAST_WRITE
+		FAST_WRITE,
+		AUTO_REFRESH,
+		SELF_REFRESH
 	};
 
 	class ChannelPacket

@@ -43,7 +43,8 @@
 namespace NVDSim{
 	enum SenderType{
 		CONTROLLER,
-		BUFFER
+		BUFFER,
+		NOONE
 	};
 
 	class Controller;
@@ -62,6 +63,11 @@ namespace NVDSim{
 			bool isBufferFull(SenderType t, ChannelPacketType bt, uint64_t die);
 			int notBusy(void);
 
+			void isRefreshing(uint64_t die, uint64_t plane, uint64_t block, bool write);
+			bool canDieRefresh(uint64_t die);
+
+			bool lastOwner(SenderType t);  // for DRAM bus turn around
+
 			void update(void);
 
 			void bufferDone(uint64_t package, uint64_t die, uint64_t plane);
@@ -72,7 +78,8 @@ namespace NVDSim{
 
 		private:
 			SenderType sType;
-			int packetType;
+			SenderType lastSender;
+			uint packetType;
 			uint64_t sender;
 			int busy;
 			int firstCheck;

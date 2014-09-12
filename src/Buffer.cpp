@@ -81,12 +81,20 @@ void Buffer::attachChannel(Channel *c){
     channel = c;
 }
 
+void Buffer::attachDataChannel(Channel *c){
+	data_channel = c;
+}
+
 void Buffer::sendToDie(ChannelPacket *busPacket){
     dies[busPacket->die]->receiveFromBuffer(busPacket);
 }
 
 void Buffer::sendToController(ChannelPacket *busPacket){
     channel->sendToController(busPacket);
+}
+
+void Buffer::sendDataToController(ChannelPacket *busPacket){
+    data_channel->sendToController(busPacket);
 }
 
 bool Buffer::sendPiece(SenderType t, int type, uint64_t die, uint64_t plane){

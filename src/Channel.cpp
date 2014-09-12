@@ -46,6 +46,8 @@ Channel::Channel(uint64_t i){
 	busy = 0;
 
 	firstCheck = 0;
+	sType = NOONE;
+	lastSender = NOONE;
 }
 
 void Channel::attachBuffer(Buffer *b){
@@ -66,30 +68,48 @@ int Channel::obtainChannel(uint64_t s, SenderType t, ChannelPacket *p){
     // we cannot send data or commands to a die that is busy or does not have the reg room for the data
     // the different isDieBusy numbers correspond to different plane states, more information about this function
     // and its return values can be found in Die.cpp
-    if ((sender != ULLONG_MAX) ||
-	(t == CONTROLLER && !BUFFERED && (buffer->dies[p->die]->isDieBusy(p->plane) == 1)) ||
-	// die is writing and there is no room in the cache register so just wait
-	(t == CONTROLLER && !BUFFERED && (buffer->dies[p->die]->isDieBusy(p->plane) == 6)) ||
-	// should allow us to send write data to a buffer that is currently writing
-	(t == CONTROLLER && !BUFFERED && p->busPacketType != DATA && buffer->dies[p->die]->isDieBusy(p->plane) == 2) ||
-	// should allow us to send a write command to a plane that has a loaded cache register
-	(t == CONTROLLER && !BUFFERED && p->busPacketType == DATA && (buffer->dies[p->die]->isDieBusy(p->plane) == 3 ||
-								      buffer->dies[p->die]->isDieBusy(p->plane) == 5)) ||
-	// should keep us from sending a read command to a plane that has a loaded data register
-	 (t == CONTROLLER && !BUFFERED && (p->busPacketType == READ || p->busPacketType == GC_READ) && 
-	  (buffer->dies[p->die]->isDieBusy(p->plane) == 3 ||
-	   buffer->dies[p->die]->isDieBusy(p->plane) == 4)) ||
-	(busy == 1))
-    {
-	return 0;		
-    }
-    else
-    {
-	sType = t;
-	sender = s;
-	return 1;
-    }
-    return 0;
+	if (sender != ULLONG_MAX)
+	{
+		return 0;
+	}
+	else if(t == CONTROLLER)
+	{
+		int dieBusy = buffer->dies[p->die]->isDieBusy(p->plane); 
+		//cout << "dieBusy returned " << dieBusy << "\n";
+		if((!BUFFERED && (dieBusy == 1)) ||
+		   // die is writing and there is no room in the cache register so just wait
+		   (!BUFFERED && (dieBusy == 6)) ||
+		   // should allow us to send write data to a buffer that is currently writing
+		   (!BUFFERED && p->busPacketType != DATA && dieBusy == 2) ||
+		   // should allow us to send a write command to a plane that has a loaded cache register
+		   (!BUFFERED && p->busPacketType == DATA && (dieBusy == 3 || dieBusy == 5)) ||
+		   // should keep us from sending a read command to a plane that has a loaded data register
+		   (!BUFFERED && (p->busPacketType == READ || p->busPacketType == GC_READ) && 
+			(dieBusy == 3 ||
+			 (dieBusy == 4))) ||
+		   // skullcrusher only has 1 register so you can't send reads or writes while the plane is busy
+		   (REFRESH_ENABLE && p->busPacketType == AUTO_REFRESH && !buffer->dies[p->die]->canDieRefresh()) ||
+		   (busy == 1))
+			{
+				return 0;		
+			}
+		else
+		{
+			lastSender = sType;
+			sType = t;
+			sender = (int) s;
+			return 1;
+		}
+		return 0;
+	}
+	else if(busy != 1)
+	{
+		lastSender = sType;
+		sType = t;
+		sender = (int) s;
+		return 1;
+	}
+	return 0;
 }
 
 int Channel::releaseChannel(SenderType t, uint64_t s){       
@@ -131,6 +151,28 @@ int Channel::notBusy(void){
 	    return 0;
 	}else{
 	    return 1;
+	}
+}
+
+void Channel::isRefreshing(uint64_t die, uint64_t plane, uint64_t block, bool write)
+{
+	buffer->dies[die]->testDieRefresh(plane, block, write);
+}
+
+bool Channel::canDieRefresh(uint64_t die)
+{
+	return buffer->dies[die]->canDieRefresh();
+}
+
+bool Channel::lastOwner(SenderType t)
+{
+	if(t == lastSender || lastSender == NOONE)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
 	}
 }
 

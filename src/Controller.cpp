@@ -63,6 +63,44 @@ Controller::Controller(NVDIMM* parent, Logger* l){
 	done = 0;
 	die_counter = 0;
 	currentClockCycle = 0;
+
+	REFRESH_CTRL_PERIOD = 0;
+
+	if(REFRESH_ENABLE)
+	{
+		// TO DO: Make sure that this math is valid with non-Flash-like hierarchies
+		// refreshing all the banks on a channel simultaneously so we don't have
+		// to issue as many refreshes
+		if(refreshLevel == PerChannel)
+		{
+			REFRESH_CTRL_PERIOD = REFRESH_PERIOD / (PAGES_PER_BLOCK * BLOCKS_PER_PLANE);
+		}
+		else if(refreshLevel == PerVault)
+		{
+			REFRESH_CTRL_PERIOD = REFRESH_PERIOD / (PAGES_PER_BLOCK * BLOCKS_PER_PLANE * PLANES_PER_DIE);
+		}
+		// per bank default
+		else
+		{
+			REFRESH_CTRL_PERIOD = REFRESH_PERIOD / (PAGES_PER_BLOCK * BLOCKS_PER_PLANE * PLANES_PER_DIE * DIES_PER_PACKAGE);
+		}
+		cout << "Refresh level is: " << refreshLevel << "\n";
+		cout << "Refresh control period is: " << REFRESH_CTRL_PERIOD << "\n";
+		// staggering the refresh countdowns similar to how DRAMSim2 does it
+		stringstream scs;
+		uint64_t adjusted_refresh_period;
+		scs << ((REFRESH_CTRL_PERIOD)/NUM_PACKAGES);
+		scs >> adjusted_refresh_period;
+		cout << adjusted_refresh_period;
+
+		for (uint64_t i=0; i < NUM_PACKAGES; i++)
+		{	
+			uint64_t temp_refresh = adjusted_refresh_period*(i+1);
+			refreshCountdown.push_back((uint) (temp_refresh));
+		}
+
+		refreshing = vector<vector<bool> >(NUM_PACKAGES, vector<bool>(DIES_PER_PACKAGE, 0));
+	}
 }
 
 void Controller::attachPackages(vector<Package> *packages){
@@ -347,256 +385,342 @@ void Controller::update(void){
     // schedule the next operation for each die
     if(SCHEDULE)
     {
-	uint64_t i;	
-	//loop through the channels to find a packet for each
-	for (i = 0; i < NUM_PACKAGES; i++)
-	{
-	    // loop through the dies per package to find the packet
-	    die_counter = 0;
-	    done = 0;
-	    while (!done)
-	    {
-		// do we need to issue an emergency write
-		if((WRITE_ON_QUEUE_SIZE == true && writeQueues[i][die_pointers[i]].size() >= WRITE_QUEUE_LIMIT))
+		uint64_t i;	
+		//loop through the channels to find a packet for each
+		for (i = 0; i < NUM_PACKAGES; i++)
 		{
-		    if (!writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
-			//if we can get the channel
-			if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, writeQueues[i][die_pointers[i]].front())){
-			    outgoingPackets[i] = writeQueues[i][die_pointers[i]].front();
-			    if(LOGGING && QUEUE_EVENT_LOG)
-			    {
-				log->log_ctrl_queue_event(true, writeQueues[i][die_pointers[i]].front()->package, &writeQueues[i][die_pointers[i]]);
-			    }
-			    writeQueues[i][die_pointers[i]].pop_front();
-			    parentNVDIMM->queuesNotFull();
-			    
-			    switch (outgoingPackets[i]->busPacketType){
-			    case DATA:
-				// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
-				channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
-				break;
-			    default:
-				channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
-				break;
-			    }
-			    // managed to place something so we're done with this channel
-			    // advance the die pointer since this die is now busy
-			    die_pointers[i]++;
-			    if (die_pointers[i] >= DIES_PER_PACKAGE)
-			    {
-				die_pointers[i] = 0;
-			    }
-			    done = 1;
-			}
-			// if we can't get the channel for that die, try the next die			
-			else
+			// loop through the dies per package to find the packet
+			die_counter = 0;
+			done = 0;
+			while (!done)
 			{
-			    done = nextDie(i);
-			}
-		    }
+				// do we need to issue an emergency write
+				if((WRITE_ON_QUEUE_SIZE == true && writeQueues[i][die_pointers[i]].size() >= WRITE_QUEUE_LIMIT))
+				{
+					if (!writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
+						//if we can get the channel
+						if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, writeQueues[i][die_pointers[i]].front())){
+							outgoingPackets[i] = writeQueues[i][die_pointers[i]].front();
+							if(LOGGING && QUEUE_EVENT_LOG)
+							{
+								log->log_ctrl_queue_event(true, writeQueues[i][die_pointers[i]].front()->package, &writeQueues[i][die_pointers[i]]);
+							}
+							writeQueues[i][die_pointers[i]].pop_front();
+							parentNVDIMM->queuesNotFull();
+							
+							switch (outgoingPackets[i]->busPacketType){
+							case DATA:
+								// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
+								channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
+								break;
+							default:
+								channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+								break;
+							}
+							// managed to place something so we're done with this channel
+							// advance the die pointer since this die is now busy
+							die_pointers[i]++;
+							if (die_pointers[i] >= DIES_PER_PACKAGE)
+							{
+								die_pointers[i] = 0;
+							}
+							done = 1;
+						}
+						// if we can't get the channel for that die, try the next die			
+						else
+						{
+							done = nextDie(i);
+						}
+					}
 		    // this queue is empty but it shouldn't be
-		    else
-		    {
-		      ERROR("Empty queue was identified initially as too full, something weird happened")
-		    }
+					else
+					{
+						ERROR("Empty queue was identified initially as too full, something weird happened")
+							}
+				}
+				// if we don't have to issue a write check to see if there is a read to send
+				// we're reusing the same die pointer for reads and writes because if a die was just given a read or write
+				// it can't do anything else with it so the die counters sort've act like a dies in use marker
+				else if (!readQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
+					//if we can get the channel
+					if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, readQueues[i][die_pointers[i]].front())){
+						outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
+						if(LOGGING && QUEUE_EVENT_LOG)
+						{
+							log->log_ctrl_queue_event(false, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
+						}
+						readQueues[i][die_pointers[i]].pop_front();
+						parentNVDIMM->queuesNotFull();
+						
+						channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+						// managed to place something so we're done with this channel
+						// advance the die pointer since this die is now busy
+						die_pointers[i]++;
+						if (die_pointers[i] >= DIES_PER_PACKAGE)
+						{
+							die_pointers[i] = 0;
+						}
+						done = 1;
+					}
+					// couldn't get the channel so go to the next die
+					else
+					{
+						done = nextDie(i);
+					}
+				}
+				// if there are no reads to send see if we're allowed to send a write instead
+				else if (IDLE_WRITE == true && !writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
+					//if we can get the channel
+					if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, writeQueues[i][die_pointers[i]].front())){
+						outgoingPackets[i] = writeQueues[i][die_pointers[i]].front();
+						if(LOGGING && QUEUE_EVENT_LOG)
+						{
+							log->log_ctrl_queue_event(true, writeQueues[i][die_pointers[i]].front()->package, &writeQueues[i][die_pointers[i]]);
+						}
+						writeQueues[i][die_pointers[i]].pop_front();
+						// successfully issued the write so increment the die pointer
+						die_pointers[i]++;
+						if (die_pointers[i] >= DIES_PER_PACKAGE)
+						{
+							die_pointers[i] = 0;
+						}
+						parentNVDIMM->queuesNotFull();
+						
+						switch (outgoingPackets[i]->busPacketType){
+						case DATA:
+							// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
+							channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
+							break;
+						default:
+							channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+							break;
+						}
+						// managed to place something so we're done with this channel
+						// advance the die pointer since this die is now busy
+						die_pointers[i]++;
+						if (die_pointers[i] >= DIES_PER_PACKAGE)
+						{
+							die_pointers[i] = 0;
+						}
+						done = 1;
+					}
+					// couldn't get the channel so go to the next die
+					else
+					{
+						done = nextDie(i);
+					}
+				}
+				// queue was empty, move on
+				else
+				{
+					done = nextDie(i);
+				}
+			}
 		}
-		// if we don't have to issue a write check to see if there is a read to send
-		// we're reusing the same die pointer for reads and writes because if a die was just given a read or write
-		// it can't do anything else with it so the die counters sort've act like a dies in use marker
-		else if (!readQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
-		  //if we can get the channel
-		    if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, readQueues[i][die_pointers[i]].front())){
-		        outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
-			if(LOGGING && QUEUE_EVENT_LOG)
-			{
-			    log->log_ctrl_queue_event(false, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
-			}
-			readQueues[i][die_pointers[i]].pop_front();
-			parentNVDIMM->queuesNotFull();
-		    
-			channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
-			// managed to place something so we're done with this channel
-			// advance the die pointer since this die is now busy
-			die_pointers[i]++;
-			if (die_pointers[i] >= DIES_PER_PACKAGE)
-			{
-			    die_pointers[i] = 0;
-		        }
-			done = 1;
-		    }
-		    // couldn't get the channel so go to the next die
-		    else
-		    {
-		        done = nextDie(i);
-		    }
-		}
-		// if there are no reads to send see if we're allowed to send a write instead
-		else if (IDLE_WRITE == true && !writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
-		    //if we can get the channel
-		    if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, writeQueues[i][die_pointers[i]].front())){
-			outgoingPackets[i] = writeQueues[i][die_pointers[i]].front();
-			if(LOGGING && QUEUE_EVENT_LOG)
-			{
-			    log->log_ctrl_queue_event(true, writeQueues[i][die_pointers[i]].front()->package, &writeQueues[i][die_pointers[i]]);
-			}
-			writeQueues[i][die_pointers[i]].pop_front();
-			// successfully issued the write so increment the die pointer
-			die_pointers[i]++;
-			if (die_pointers[i] >= DIES_PER_PACKAGE)
-			{
-			    die_pointers[i] = 0;
-			}
-			parentNVDIMM->queuesNotFull();
-			
-			switch (outgoingPackets[i]->busPacketType){
-			case DATA:
-				// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
-			    channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
-			    break;
-			default:
-			    channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
-			    break;
-			}
-			// managed to place something so we're done with this channel
-			// advance the die pointer since this die is now busy
-			die_pointers[i]++;
-			if (die_pointers[i] >= DIES_PER_PACKAGE)
-			{
-			    die_pointers[i] = 0;
-			}
-			done = 1;
-		    }
-		    // couldn't get the channel so go to the next die
-		    else
-		    {
-			done = nextDie(i);
-		    }
-		}
-		// queue was empty, move on
-		else
-		{
-		    done = nextDie(i);
-		}
-	    }
-	}
     }
     // not scheduling so everything comes from the read queue
     else
     {
-	uint64_t i;	
-	//Look through queues and send oldest packets to the appropriate channel
-	for (i = 0; i < NUM_PACKAGES; i++){
-	    // loop through the dies per package to find the packet
-	    die_counter = 0;
-	    done = 0;
-	    while (!done)
-	    {
-		if (!readQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
-		    // check the status of the die
-		    // ***** This is the write cancelation and write pausing stuff ************************************************************************************
-		    if(WRITE_PAUSING || WRITE_CANCELATION)
-		    {
-			int status = (*packages)[i].dies[die_pointers[i]]->isDieBusy(readQueues[i][die_pointers[i]].front()->plane);		   
-			
-			// if the die/plane is writing and we have a read waiting then see how far into this iteration		    
-			if((status == 2 || status == 6) && readQueues[i][die_pointers[i]].front()->busPacketType == READ)
+		uint64_t i;	
+		//Look through queues and send oldest packets to the appropriate channel
+		for (i = 0; i < NUM_PACKAGES; i++){
+			// loop through the dies per package to find the packet
+			die_counter = 0;
+			done = 0;
+			Channel* channel_pointer;
+			if ((!readQueues[i][die_pointers[i]].empty() || (REFRESH_ENABLE && refreshCountdown[i] <= 0)) && outgoingPackets[i]==NULL)
 			{
-			    uint64_t currentWritePAddr = (*packages)[i].dies[die_pointers[i]]->returnCurrentPAddr(readQueues[i][die_pointers[i]].front()->plane);
-			    
-			    // also make sure that we don't have a read after write hazard here
-			    if(readQueues[i][die_pointers[i]].front()->physicalAddress != currentWritePAddr)
-			    {
-				uint writeIterationCyclesLeft = (*packages)[i].dies[die_pointers[i]]->returnWriteIterationCycle(readQueues[i][die_pointers[i]].front()->plane);	
-				uint64_t currentWriteBlock = (*packages)[i].dies[die_pointers[i]]->returnCurrentBlock(readQueues[i][die_pointers[i]].front()->plane);
+				// check the status of the die
+				// ***** This is the write cancelation and write pausing stuff ************************************************************************************
+				if((WRITE_PAUSING || WRITE_CANCELATION) && !readQueues[i][die_pointers[i]].empty())
+				{
+					writePausingCancelation(i);
+				}
+		    	
+				// if we are simulating refreshes and its time to issue an autorefresh to this
+				// die, then do so
+				ChannelPacket *potentialPacket;
+				if(REFRESH_ENABLE && refreshCountdown[i] <= 0)
+				{
+					if(!readQueues[i][die_pointers[i]].empty())
+					{
+						// this prevents a refersh from coming between a write and data packet
+						if(readQueues[i][die_pointers[i]].front()->busPacketType == WRITE)
+						{
+							potentialPacket = readQueues[i][die_pointers[i]].front();
+						}
+						else
+						{
+							// autorefresh so we don't care about the address, just the command
+							potentialPacket = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, 0, die_pointers[i], i, NULL);
+						}
+					}
+					else
+					{
+						// autorefresh so we don't care about the address, just the command
+						potentialPacket = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, 0, die_pointers[i], i, NULL);
+					}
+				}
+				else
+				{
+					potentialPacket = readQueues[i][die_pointers[i]].front();
+				}
+
+
 				
-				//if we're far enough into a write iteration, then attempt a pause
-				// if this read is accessing the same block, then we need to cancel the write
-				if(writeIterationCyclesLeft < (WRITE_ITERATION_CYCLES/2) && currentWriteBlock != readQueues[i][die_pointers[i]].front()->block &&
-				    WRITE_PAUSING)
+				if(DEVICE_DATA_CHANNEL && potentialPacket->busPacketType == DATA)
 				{
-				    (*packages)[i].dies[die_pointers[i]]->writePause(readQueues[i][die_pointers[i]].front()->plane);
+					channel_pointer = (*packages)[i].data_channel;
 				}
-				// if we've still got a ways to go with this write or we're using the same block, go ahead and cancel it
-				else if(WRITE_CANCELATION)
+				else
 				{
-				    (*packages)[i].dies[die_pointers[i]]->writeCancel(readQueues[i][die_pointers[i]].front()->plane);
+					channel_pointer = (*packages)[i].channel;
 				}
-			    }
-			}
-		    }
-		    
-		    //if we can get the channel
-		    if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, readQueues[i][die_pointers[i]].front())){
-			outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
-			if(LOGGING && QUEUE_EVENT_LOG)
-			{
-			    switch (readQueues[i][die_pointers[i]].front()->busPacketType)
-			    {
-			    case READ:
-			    case GC_READ:
-			    case ERASE:
-				log->log_ctrl_queue_event(false, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
-				break;
-			    case WRITE:
-			    case GC_WRITE:
-			    case SET_WRITE:
-			    case DATA:
-				log->log_ctrl_queue_event(true, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
-				break;
-			    case FAST_WRITE:
-			    case PRESET_WRITE:
-				break;
-			    }
-			}
-			readQueues[i][die_pointers[i]].pop_front();
-			parentNVDIMM->queuesNotFull();
-			if(BUFFERED)
-			{
-			  switch (outgoingPackets[i]->busPacketType){
-			    case DATA:
-				// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
-				channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
-				break;
-			    default:
-				channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
-				break;
-			    }			    
+
+
+				bool channel_busy = false; // for logging purposes
+				// repeat refresh so don't do anything
+				if(!potentialPacket->busPacketType == AUTO_REFRESH || (allDiesRefreshReady(i) && outgoingPackets[i] == NULL))
+				{
+					//if we can get the channel
+					// separate if statement because we don't want to claim a channel if the bank group
+					// can't be used
+					if (channel_pointer->obtainChannel(0, CONTROLLER, potentialPacket)){
+						
+						if(LOGGING && QUEUE_EVENT_LOG)
+						{
+							switch (potentialPacket->busPacketType)
+							{
+							case READ:
+							case GC_READ:
+							case ERASE:
+								log->log_ctrl_queue_event(false, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
+								break;
+							case WRITE:
+							case GC_WRITE:
+							case SET_WRITE:
+							case DATA:
+								log->log_ctrl_queue_event(true, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
+								break;
+							case FAST_WRITE:
+							case PRESET_WRITE:
+								break;
+							case AUTO_REFRESH:
+							case SELF_REFRESH:
+								break;
+							}
+						}
+						
+						outgoingPackets[i] = potentialPacket;
+						if(REFRESH_ENABLE && potentialPacket->busPacketType == AUTO_REFRESH)
+						{
+							refreshCountdown[i] = REFRESH_CTRL_PERIOD;
+						}
+						else
+						{
+							readQueues[i][die_pointers[i]].pop_front();
+							parentNVDIMM->queuesNotFull();
+						}
+							
+						if(BUFFERED)
+						{
+							switch (outgoingPackets[i]->busPacketType){
+							case DATA:
+								// Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
+								// are in 1 KB (1024 * 8).
+								if(DEVICE_DATA_CHANNEL)
+								{
+									// don't have to adjust the beats because the controller is updating every channel cycle
+									channelBeatsLeft[i] = divide_params_64b((NV_PAGE_SIZE*8),DEVICE_DATA_WIDTH); 
+								}
+								else
+								{
+									channelBeatsLeft[i] = divide_params_64b((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
+								}
+								break;
+							default:
+								channelBeatsLeft[i] = divide_params_64b(COMMAND_LENGTH,CHANNEL_WIDTH);
+								break;
+							}							
+						}
+						// unbuffered and front buffered both have the controller directly connected to the devices
+						else
+						{
+							switch (outgoingPackets[i]->busPacketType){
+							case DATA:
+								// Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
+								// are in 1 KB (1024 * 8).
+								if(DEVICE_DATA_CHANNEL)
+								{
+									// the controller cannot send data to the die faster than the die can receive
+									channelBeatsLeft[i] = divide_params_64b(divide_params_64b((NV_PAGE_SIZE*8),DEVICE_DATA_WIDTH) * DEVICE_CYCLE, CYCLE_TIME); 
+								}
+								else
+								{
+									channelBeatsLeft[i] = divide_params_64b(divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE, CYCLE_TIME); 
+								}
+								break;
+							default:
+								channelBeatsLeft[i] = divide_params_64b(divide_params_64b(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE, CYCLE_TIME);
+								break;
+							}
+							
+							//DRAM chip bus turn around delay
+							if(CHANNEL_TURN_ENABLE && !channel_pointer->lastOwner(CONTROLLER))
+							{
+								channelBeatsLeft[i] += CHANNEL_TURN_CYCLES;
+							}							
+						}
+						// managed to place something so we're done with this channel
+						// advance the die pointer since this die is now busy
+						die_pointers[i]++;
+						if (die_pointers[i] >= DIES_PER_PACKAGE)
+						{
+							die_pointers[i] = 0;
+						}
+						done = 1;
+					}
+					// couldn't get the channel so... Next die
+					else
+					{
+						// check to see if we couldn't get the channel cause the plane was refreshing
+						if(potentialPacket->busPacketType==WRITE)
+						{
+							channel_pointer->isRefreshing(potentialPacket->die, potentialPacket->plane, potentialPacket->block, true);
+						}
+						else if(potentialPacket->busPacketType==READ)
+						{
+							channel_pointer->isRefreshing(potentialPacket->die, potentialPacket->plane, potentialPacket->block, false);
+						}
+						
+						// if the potential packet was a refresh that we just created we need to delete it here to prevent a leak
+						if(potentialPacket->busPacketType==AUTO_REFRESH)
+						{
+							delete potentialPacket;
+						}
+						channel_busy = true;
+						done = nextDie(i);
+					}
+				}
+				// die was already refreshing
+				else
+				{
+					// if the potential packet was a refresh that we just created we need to delete it here to prevent a leak
+					if(potentialPacket->busPacketType==AUTO_REFRESH)
+					{
+						delete potentialPacket;
+					}
+					done = nextDie(i);
+				}
 			}
 			else
 			{
-			    switch (outgoingPackets[i]->busPacketType){
-			    case DATA:
-				// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
-				channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),DEVICE_WIDTH); 
-				break;
-			    default:
-				channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,DEVICE_WIDTH);
-				break;
-			    }
-			}
-			// managed to place something so we're done with this channel
-			// advance the die pointer since this die is now busy
-			die_pointers[i]++;
-			if (die_pointers[i] >= DIES_PER_PACKAGE)
-			{
-			    die_pointers[i] = 0;
-			}
-			done = 1;
-		    }
-		    // couldn't get the channel so... Next die
-		    else
-		    {
-			done = nextDie(i);
-		    }
+				// this queue is empty so move on
+				done = nextDie(i);
+			}		    
 		}
-		// this queue is empty so move on
-		else
-		{
-		    done = nextDie(i);
-		}
-	    }
 	}
-    }
+	
 	
     //Use the buffer code for the NVDIMMS to calculate the actual transfer time
     if(BUFFERED)
@@ -669,18 +793,43 @@ void Controller::update(void){
     {
 	// BUFFERED NOT TRUE CASE...
 	uint64_t i;
+	Channel* channel_pointer;
 	//Check for commands/data on a channel. If there is, see if it is done on channel
-	for (i= 0; i < outgoingPackets.size(); i++){
-	    if (outgoingPackets[i] != NULL && (*packages)[outgoingPackets[i]->package].channel->hasChannel(CONTROLLER, 0)){
-		channelBeatsLeft[i]--;
-		if (channelBeatsLeft[i] == 0){
-		    (*packages)[outgoingPackets[i]->package].channel->sendToBuffer(outgoingPackets[i]);
-		    (*packages)[outgoingPackets[i]->package].channel->releaseChannel(CONTROLLER, 0);
-		    outgoingPackets[i] = NULL;
+	for (i= 0; i < outgoingPackets.size(); i++)
+	{
+		if (outgoingPackets[i] != NULL)
+		{
+			if(DEVICE_DATA_CHANNEL && outgoingPackets[i]->busPacketType == DATA)
+			{
+				channel_pointer = (*packages)[outgoingPackets[i]->package].data_channel;
+			}
+			else
+			{
+				channel_pointer = (*packages)[outgoingPackets[i]->package].channel;
+			}
+			if (channel_pointer->hasChannel(CONTROLLER, 0)){
+				channelBeatsLeft[i]--;
+				if (channelBeatsLeft[i] == 0){
+					if(REFRESH_ENABLE && refreshLevel == PerChannel && outgoingPackets[i]->busPacketType == AUTO_REFRESH )
+					{
+						for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+						{
+							ChannelPacket *tempPacket = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, 0, d, outgoingPackets[i]->package, NULL);
+							channel_pointer->sendToBuffer(tempPacket);
+						}
+					}
+					else
+					{
+						channel_pointer->sendToBuffer(outgoingPackets[i]);
+					}
+					
+					channel_pointer->releaseChannel(CONTROLLER, 0);
+					outgoingPackets[i] = NULL;
+				}
+			}
 		}
-	    }
-	}
     }
+	}
 
     //See if any read data is ready to return
     while (!returnTransaction.empty()){
@@ -706,6 +855,84 @@ void Controller::update(void){
 	    returnTransaction.pop_back();
 	}
     }
+
+	//update the refresh counters
+	if(REFRESH_ENABLE)
+	{
+		uint64_t i;
+		for (i = 0; i < refreshCountdown.size(); i++)
+		{
+			if(refreshCountdown[i] > 0)
+				refreshCountdown[i]--;
+		}
+	}
+}
+
+void Controller::writePausingCancelation(uint64_t package)
+{
+	bool success = false; // used for write pausing and cancelation
+	int status = (*packages)[package].dies[die_pointers[package]]->isDieBusy(readQueues[package][die_pointers[package]].front()->plane);		   
+			
+	// if the die/plane is writing and we have a read waiting then see how far into this iteration		    
+	if((status == 2 || status == 6) && readQueues[package][die_pointers[package]].front()->busPacketType == READ)
+	{			
+		// also make sure that we don't have a read after write hazard here
+		if((*packages)[package].dies[die_pointers[package]]->isCurrentPAddr(readQueues[package][die_pointers[package]].front()->plane, readQueues[package][die_pointers[package]].front()->block, readQueues[package][die_pointers[package]].front()->physicalAddress))
+		{
+			uint writeIterationCyclesLeft = (*packages)[package].dies[die_pointers[package]]->returnWriteIterationCycle(readQueues[package][die_pointers[package]].front()->plane);	
+			
+			//if we're far enough into a write iteration, then attempt a pause
+			// if this read is accessing the same block, then we need to cancel the write
+			if(writeIterationCyclesLeft < (WRITE_ITERATION_CYCLES/2) && (*packages)[package].dies[die_pointers[package]]->isCurrentBlock(readQueues[package][die_pointers[package]].front()->plane, readQueues[package][die_pointers[package]].front()->block) && WRITE_PAUSING)
+			{
+				success = (*packages)[package].dies[die_pointers[package]]->writePause(readQueues[package][die_pointers[package]].front()->plane);
+			}
+			// if we've still got a ways to go with this write or we're using the same block, go ahead and cancel it
+			else if(WRITE_CANCELATION)
+			{
+				success = (*packages)[package].dies[die_pointers[package]]->writeCancel(readQueues[package][die_pointers[package]].front()->plane);
+			}
+		}
+	}
+}
+
+bool Controller::allDiesRefreshReady(uint64_t package)
+{
+	if(REFRESH_ENABLE)
+	{
+		
+		if(refreshLevel == PerChannel)
+		{
+			uint64_t free_count = 0;
+			for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+			{
+				if((*packages)[package].channel->canDieRefresh(d))
+					free_count++;
+			}
+			if(free_count == DIES_PER_PACKAGE)
+			{
+				return true;
+			}
+			else
+			{
+				//cout << "all dies not free \n";
+				//cout << "free count for package " << package << " was " << free_count << "\n";
+				return false;
+			}
+		}
+		else if(refreshLevel == PerBank || refreshLevel == PerVault)
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+	else
+	{
+		return true;
+	}
 }
 
 bool Controller::dataReady(uint64_t package, uint64_t die, uint64_t plane)

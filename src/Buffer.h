@@ -48,8 +48,10 @@ namespace NVDSim{
 	    Buffer(uint64_t i);
 	    void attachDie(Die *d);
 	    void attachChannel(Channel *c);
+		void attachDataChannel(Channel *c);
 	    void sendToDie(ChannelPacket *busPacket);
 	    void sendToController(ChannelPacket *busPacket);
+		void sendDataToController(ChannelPacket *busPacket);
 
 	    bool sendPiece(SenderType t, int type, uint64_t die, uint64_t plane);
 	    bool isFull(SenderType t, ChannelPacketType bt, uint64_t die);
@@ -64,6 +66,7 @@ namespace NVDSim{
 	    bool dataReady(uint64_t die, uint64_t plane); // die asking to send data back
 
 	    Channel *channel;
+		Channel *data_channel;
 	    std::vector<Die *> dies;
 
 	    uint64_t id;

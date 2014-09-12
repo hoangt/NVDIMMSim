@@ -76,6 +76,7 @@ namespace NVDSim{
 			void write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t pAddr, bool gc, bool mapped);
 			write_location next_write_location(uint64_t vAddr);
 			write_location round_robin_write_location(uint64_t vAddr);
+			write_location direct_write_location(uint64_t vAddr);
 			void gap_rotate(void);
 			void gap_movement(void);
 			void handle_gap_write(uint64_t write_vAddr);
@@ -127,7 +128,8 @@ namespace NVDSim{
 			FlashTransaction writeTransaction;
 
 			bool gc_flag;
-			uint64_t channel_pointer, die_pointer, plane_pointer, lookupCounter;
+			uint64_t channel, die, plane, lookupCounter;
+			uint64_t temp_channel, temp_die, temp_plane;
 			uint64_t max_queue_length;
 			FlashTransaction currentTransaction;
 			bool busy;
@@ -163,7 +165,13 @@ namespace NVDSim{
 			std::vector<vector<bool>> dirty;
 			std::list<FlashTransaction> transQueue; 
 
-			
+			// address translation variables
+			unsigned    channelBitWidth;
+			unsigned	vaultBitWidth;
+			unsigned	bankBitWidth;
+			unsigned	rowBitWidth;
+			unsigned    colBitWidth;
+			unsigned    colOffset;
 	};
 }
 #endif

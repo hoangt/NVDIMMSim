@@ -73,7 +73,9 @@ namespace NVDSim
 			static void ReadIniFile(string filename, bool isSystemParam);
 			static bool CheckIfAllSet();
 			static void WriteValuesOut(std::ofstream &visDataOut);
-			static void EnumsFromStrings();
+			static void EnumsFromWearLevelStrings();
+			static void EnumsFromRefreshStrings();
+			static void EnumsFromAddressStrings();
 		private:
 			static void Trim(string &str);
 	};

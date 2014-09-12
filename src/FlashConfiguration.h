@@ -108,6 +108,27 @@ enum WearLevelingScheme
     DirectTranslation
 };
 
+enum RefreshScheme
+{
+	PerBank,
+	PerVault,
+	PerChannel
+};
+
+enum AddressScheme
+{
+	ChannelVaultBankRowCol,
+	ColRowBankVaultChannel,
+	RowBankVaultChannelCol,
+	BankVaultChannelColRow,
+	BankVaultColChannelRow,
+	BankChannelVaultColRow,
+	Default
+}; 
+
+// Debugging Options
+extern bool DEBUG_TRANSLATION;
+
 // constants
 #define BITS_PER_KB 8192
 
@@ -125,6 +146,16 @@ extern std::string WEAR_LEVELING_SCHEME;
 extern WearLevelingScheme wearLevelingScheme;
 extern uint64_t GAP_WRITE_INTERVAL;
 extern bool RANDOM_ADDR;
+
+// Addressing Options
+extern std::string ADDRESS_SCHEME;
+extern AddressScheme addressScheme;
+
+// Refresh Support
+extern bool REFRESH_ENABLE;
+extern uint64_t REFRESH_PERIOD; // time each cell can go without being refreshed
+extern std::string REFRESH_LEVEL; // number of banks that refresh in parallel
+extern RefreshScheme refreshLevel;
 
 // Write blocking avoidance
 extern bool WRITE_PAUSING;
@@ -156,6 +187,9 @@ extern bool QUEUE_EVENT_LOG;
 extern bool PLANE_STATE_LOG;
 extern bool WRITE_ARRIVE_LOG;
 extern bool READ_ARRIVE_LOG;
+extern bool CONCURRENCY_LOG;
+extern uint64_t BLOCK_HISTOGRAM_MAX;
+extern uint64_t BLOCK_HISTOGRAM_BIN;
 
 // Save and Restore Options
 extern bool ENABLE_NV_SAVE;
@@ -163,7 +197,7 @@ extern std::string NV_SAVE_FILE;
 extern bool ENABLE_NV_RESTORE;
 extern std::string NV_RESTORE_FILE;
 
-extern std::string DEVICE_TYPE;
+extern std::string DEVICE_TYPE; //types: NAND, P8P, PCM, DRAM
 extern uint64_t NUM_PACKAGES;
 extern uint64_t DIES_PER_PACKAGE;
 extern uint64_t PLANES_PER_DIE;
@@ -173,6 +207,11 @@ extern uint64_t PAGES_PER_BLOCK; // when in PCM mode this should always be 1 bec
 extern uint64_t NV_PAGE_SIZE;
 extern float DEVICE_CYCLE; // in nanoseconds
 extern uint64_t DEVICE_WIDTH;
+ extern bool DEVICE_DATA_CHANNEL; // enables a second data channel
+extern uint64_t DEVICE_DATA_WIDTH; // device data channel
+extern bool CHANNEL_TURN_ENABLE; // channel driver turn around delay enable
+extern uint64_t CHANNEL_TURN_TIME; // time it takes to turn the channel around
+#define CHANNEL_TURN_CYCLES divide_params_64b(CHANNEL_TURN_TIME, CYCLE_TIME)
 
 // Channel options
 extern float CHANNEL_CYCLE; //default channel, becomes up channel when down channel is enabled
@@ -219,6 +258,14 @@ extern uint64_t BUFFER_LOOKUP_TIME;
 #define BUFFER_LOOKUP_CYCLES (divide_params_64b(BUFFER_LOOKUP_TIME, CHANNEL_CYCLE)) // we use chcannel cycles here cause that is how the buffer is updated
 extern uint64_t QUEUE_ACCESS_TIME; //time it takes to read data out of the write queue
 #define QUEUE_ACCESS_CYCLES (divide_params_64b(QUEUE_ACCESS_TIME, CYCLE_TIME))
+
+// some DRAM specific timings
+extern uint64_t REFRESH_TIME; // time in nanoseconds that it takes to refresth
+#define REFRESH_CYCLES divide_params_64b(REFRESH_TIME, CYCLE_TIME)
+extern bool OPEN_ROW_ENABLE; // toggles a faster speed for row hits
+extern uint64_t ROW_HIT_TIME;
+#define ROW_HIT_CYCLES divide_params_64b(ROW_HIT_TIME, CYCLE_TIME)
+
 // in nanoseconds
 extern float CYCLE_TIME;
 extern float SYSTEM_CYCLE;

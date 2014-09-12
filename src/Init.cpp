@@ -40,6 +40,7 @@ using namespace std;
 
 namespace NVDSim 
 {
+	bool DEBUG_TRANSLATION;
 
     bool SCHEDULE;
     bool WRITE_ON_QUEUE_SIZE;
@@ -53,6 +54,12 @@ namespace NVDSim
     std::string WEAR_LEVELING_SCHEME;
     uint64_t GAP_WRITE_INTERVAL;
     bool RANDOM_ADDR;
+
+	std::string ADDRESS_SCHEME;
+
+	bool REFRESH_ENABLE;
+	uint64_t REFRESH_PERIOD;
+	string REFRESH_LEVEL;
 
     bool WRITE_PAUSING;
     bool WRITE_CANCELATION;
@@ -77,6 +84,9 @@ namespace NVDSim
     bool PLANE_STATE_LOG;
     bool WRITE_ARRIVE_LOG;
     bool READ_ARRIVE_LOG;
+	bool CONCURRENCY_LOG;
+	uint64_t BLOCK_HISTOGRAM_MAX;
+	uint64_t BLOCK_HISTOGRAM_BIN;
 
     bool ENABLE_NV_SAVE;
     std::string NV_SAVE_FILE;
@@ -93,6 +103,10 @@ namespace NVDSim
     uint64_t NV_PAGE_SIZE;
     float DEVICE_CYCLE;
     uint64_t DEVICE_WIDTH;
+	bool DEVICE_DATA_CHANNEL;
+	uint64_t DEVICE_DATA_WIDTH;
+	bool CHANNEL_TURN_ENABLE;
+	uint64_t CHANNEL_TURN_TIME;
 
     float CHANNEL_CYCLE; //default channel, becomes up channel when down channel is enabled
     uint64_t CHANNEL_WIDTH;
@@ -114,6 +128,11 @@ namespace NVDSim
     uint64_t LOOKUP_TIME;
     uint64_t BUFFER_LOOKUP_TIME;
     uint64_t QUEUE_ACCESS_TIME;
+
+	uint64_t REFRESH_TIME;
+	bool OPEN_ROW_ENABLE;
+	uint64_t ROW_HIT_TIME;
+
     uint64_t EPOCH_CYCLES;
     float CYCLE_TIME;
     float SYSTEM_CYCLE;
@@ -144,6 +163,12 @@ namespace NVDSim
 
     // Wear Leveling Enum
     WearLevelingScheme wearLevelingScheme;
+
+	// Refresh Enum
+	RefreshScheme refreshLevel;
+
+	// Address Enum
+	AddressScheme addressScheme;
 		
     //Map the string names to the variables they set
     static ConfigMap configMap[] = {
@@ -159,6 +184,8 @@ namespace NVDSim
 	DEFINE_STRING_PARAM(WEAR_LEVELING_SCHEME, DEV_PARAM),
 	DEFINE_UINT64_PARAM(GAP_WRITE_INTERVAL, DEV_PARAM),
 	DEFINE_BOOL_PARAM(RANDOM_ADDR, DEV_PARAM),
+	DEFINE_STRING_PARAM(ADDRESS_SCHEME, DEV_PARAM),
+	DEFINE_BOOL_PARAM(REFRESH_ENABLE, DEV_PARAM),
 	DEFINE_BOOL_PARAM(WRITE_PAUSING, DEV_PARAM),
 	DEFINE_BOOL_PARAM(WRITE_CANCELATION, DEV_PARAM),
 	DEFINE_UINT64_PARAM(WRITE_ITERATION_CYCLES, DEV_PARAM),
@@ -179,6 +206,9 @@ namespace NVDSim
 	DEFINE_BOOL_PARAM(PLANE_STATE_LOG, DEV_PARAM),
 	DEFINE_BOOL_PARAM(WRITE_ARRIVE_LOG, DEV_PARAM),
 	DEFINE_BOOL_PARAM(READ_ARRIVE_LOG, DEV_PARAM),
+	DEFINE_BOOL_PARAM(CONCURRENCY_LOG, DEV_PARAM),
+	DEFINE_UINT64_PARAM(BLOCK_HISTOGRAM_MAX, DEV_PARAM),
+	DEFINE_UINT64_PARAM(BLOCK_HISTOGRAM_BIN, DEV_PARAM),
 	DEFINE_BOOL_PARAM(ENABLE_NV_SAVE, DEV_PARAM),
 	DEFINE_STRING_PARAM(NV_SAVE_FILE, DEV_PARAM),
 	DEFINE_BOOL_PARAM(ENABLE_NV_RESTORE, DEV_PARAM),
@@ -193,11 +223,15 @@ namespace NVDSim
 	DEFINE_UINT64_PARAM(NV_PAGE_SIZE,DEV_PARAM),
 	DEFINE_FLOAT_PARAM(DEVICE_CYCLE,DEV_PARAM),
 	DEFINE_UINT64_PARAM(DEVICE_WIDTH,DEV_PARAM),
+	DEFINE_BOOL_PARAM(DEVICE_DATA_CHANNEL, DEV_PARAM),
+	DEFINE_UINT64_PARAM(DEVICE_DATA_WIDTH,DEV_PARAM),
+	DEFINE_BOOL_PARAM(CHANNEL_TURN_ENABLE, DEV_PARAM),
+	DEFINE_UINT64_PARAM(CHANNEL_TURN_TIME,DEV_PARAM),
 	DEFINE_FLOAT_PARAM(CHANNEL_CYCLE,DEV_PARAM),
 	DEFINE_UINT64_PARAM(CHANNEL_WIDTH,DEV_PARAM),
 	DEFINE_BOOL_PARAM(ENABLE_COMMAND_CHANNEL,DEV_PARAM),
 	DEFINE_UINT64_PARAM(COMMAND_CHANNEL_WIDTH,DEV_PARAM),
-        DEFINE_BOOL_PARAM(ENABLE_REQUEST_CHANNEL,DEV_PARAM),
+	DEFINE_BOOL_PARAM(ENABLE_REQUEST_CHANNEL,DEV_PARAM),
 	DEFINE_UINT64_PARAM(REQUEST_CHANNEL_WIDTH,DEV_PARAM),
 	DEFINE_BOOL_PARAM(GARBAGE_COLLECT,DEV_PARAM),
 	DEFINE_BOOL_PARAM(PRESTATE,DEV_PARAM),
@@ -209,6 +243,11 @@ namespace NVDSim
 	DEFINE_UINT64_PARAM(LOOKUP_TIME,DEV_PARAM),
 	DEFINE_UINT64_PARAM(BUFFER_LOOKUP_TIME,DEV_PARAM),
 	DEFINE_UINT64_PARAM(QUEUE_ACCESS_TIME,DEV_PARAM),
+	DEFINE_UINT64_PARAM(REFRESH_TIME,DEV_PARAM),
+	DEFINE_BOOL_PARAM(OPEN_ROW_ENABLE,DEV_PARAM),
+	DEFINE_UINT64_PARAM(ROW_HIT_TIME,DEV_PARAM),
+	DEFINE_UINT64_PARAM(REFRESH_PERIOD,DEV_PARAM),
+	DEFINE_STRING_PARAM(REFRESH_LEVEL, DEV_PARAM),
 	DEFINE_UINT64_PARAM(EPOCH_CYCLES,DEV_PARAM),
 	DEFINE_FLOAT_PARAM(CYCLE_TIME,DEV_PARAM),
 	DEFINE_FLOAT_PARAM(SYSTEM_CYCLE,DEV_PARAM),
@@ -515,25 +554,83 @@ namespace NVDSim
 	return true;
     }
 
-    void Init::EnumsFromStrings()
+    void Init::EnumsFromWearLevelStrings()
     {
-	if(WEAR_LEVELING_SCHEME == "round_robin")
-	{
-	    wearLevelingScheme = RoundRobin;
-	}
-	else if(WEAR_LEVELING_SCHEME == "start_gap")
-	{
-	    wearLevelingScheme = StartGap;
-	}
-	else if(WEAR_LEVELING_SCHEME == "direct_translation")
-	{
-	    wearLevelingScheme = DirectTranslation;
-	}
-	else
-	{
-	    cout << "WARNING: unknown wear leveling policy '"<<WEAR_LEVELING_SCHEME<<"'; valid values are 'round_robin' and 'direct_translation'. Defaulting to round_robin \n";
-	    wearLevelingScheme = RoundRobin;
-	}
+		if(WEAR_LEVELING_SCHEME == "round_robin")
+		{
+			wearLevelingScheme = RoundRobin;
+		}
+		else if(WEAR_LEVELING_SCHEME == "start_gap")
+		{
+			wearLevelingScheme = StartGap;
+		}
+		else if(WEAR_LEVELING_SCHEME == "direct_translation")
+		{
+			wearLevelingScheme = DirectTranslation;
+		}
+		else
+		{
+			cout << "WARNING: unknown wear leveling policy '"<<WEAR_LEVELING_SCHEME<<"'; valid values are 'round_robin' and 'direct_translation'. Defaulting to round_robin \n";
+			wearLevelingScheme = RoundRobin;
+		}
+    }
+
+	void Init::EnumsFromRefreshStrings()
+    {
+		if(REFRESH_LEVEL == "per_bank")
+		{
+			refreshLevel = PerBank;
+		}
+		else if(REFRESH_LEVEL == "per_vault")
+		{
+			refreshLevel = PerVault;
+		}
+		else if(REFRESH_LEVEL == "per_channel")
+		{
+			refreshLevel = PerChannel;
+		}
+		else
+		{
+			cout << "WARNING: unknown refresh policy '"<<REFRESH_LEVEL<<"'; valid values are 'per_bank','per_vault', and 'per_channel'. Defaulting to per_bank \n";
+			refreshLevel = PerBank;
+		}
+    }
+
+	void Init::EnumsFromAddressStrings()
+    {
+		if(ADDRESS_SCHEME == "channel_vault_bank_row_col")
+		{
+			addressScheme = ChannelVaultBankRowCol;
+		}
+		else if(ADDRESS_SCHEME == "col_row_bank_vault_channel")
+		{
+			addressScheme = ColRowBankVaultChannel;
+		}
+		else if(ADDRESS_SCHEME == "row_bank_vault_channel_col")
+		{
+			addressScheme = RowBankVaultChannelCol;
+		}
+		else if(ADDRESS_SCHEME == "bank_vault_channel_col_row")
+		{
+			addressScheme = BankVaultChannelColRow;
+		}
+		else if(ADDRESS_SCHEME == "bank_vault_col_channel_row")
+		{
+			addressScheme = BankVaultColChannelRow;
+		}
+		else if(ADDRESS_SCHEME == "bank_channel_vault_col_row")
+		{
+			addressScheme = BankChannelVaultColRow;
+		}
+		else if(ADDRESS_SCHEME == "default")
+		{
+			addressScheme = Default;
+		}
+		else
+		{
+			cout << "WARNING: unknown address policy '"<<ADDRESS_SCHEME<<"'; valid values are 'channel_vault_bank_row_col','col_row_bank_vault_channel', 'row_bank_vault_channel_col', and 'Default'. Defaulting to Default \n";
+			addressScheme = Default;
+		}
     }
 
 #if 0

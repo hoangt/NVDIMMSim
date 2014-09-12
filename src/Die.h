@@ -55,6 +55,8 @@ namespace NVDSim{
 			void attachToBuffer(Buffer *buff);
 			void receiveFromBuffer(ChannelPacket *busPacket);
 			int isDieBusy(uint64_t plane);
+			void testDieRefresh(uint64_t plane, uint64_t block, bool write);
+			bool canDieRefresh();
 			void update(void);
 			void channelDone(void);
 			void bufferDone(uint64_t plane);
@@ -64,8 +66,10 @@ namespace NVDSim{
 			bool writePause(uint64_t plane);
 			bool writeResume(uint64_t plane);
 			bool writeCancel(uint64_t plane);
-			uint64_t returnCurrentBlock(uint64_t plane);
-			uint64_t returnCurrentPAddr(uint64_t plane);
+			bool isCurrentBlock(uint64_t plane, uint64_t block);
+			bool isCurrentPAddr(uint64_t plane, uint64_t block, uint64_t physAddr);
+			void addRefreshes(ChannelPacket *busPacket);
+			void updateRefreshPointer();
 
 			// for fast forwarding
 			void writeToPlane(ChannelPacket *packet);
@@ -85,6 +89,17 @@ namespace NVDSim{
 			std::vector<Plane> planes;
 			std::vector<ChannelPacket *> currentCommands;
 			std::vector<ChannelPacket *> pausedCommands;
+
+			// DRAM row locality support
+			std::vector<vector<uint64_t>> open_row;
+
+			//for logging purposes
+			std::vector<bool> refresh_blocked; 
+
+			// refresh stuff
+			uint64_t plane_rpointer;
+			std::vector<bool> refreshing; //just a bit to check if something is refreshing
+
 			uint64_t *pausedCyclesLeft;
 			uint64_t *controlCyclesLeft;
 			uint64_t *writeIterationCyclesLeft;

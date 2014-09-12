@@ -58,6 +58,12 @@ Logger::Logger()
 	num_write_unmapped = 0;
 	num_write_mapped = 0;
 
+	num_read_refresh_blocked = 0;
+	num_write_refresh_blocked = 0;
+
+	average_read_refresh_delay = 0;
+	average_write_refresh_delay = 0;
+
 	average_latency = 0;
 	average_read_latency = 0;
 	average_write_latency = 0;
@@ -99,6 +105,58 @@ Logger::Logger()
 		first_ctrl_read_log[i] = true;
 		first_crtl_write_log[i] = true;
 	    }
+	}
+
+	// concurrency monitoring
+	if(CONCURRENCY_LOG)
+	{
+		channel_use = new uint64_t[NUM_PACKAGES];
+		for(uint64_t c = 0; c < NUM_PACKAGES; c++)
+		{
+			channel_use[c] = 0;
+		}
+		
+		die_use = new uint64_t[DIES_PER_PACKAGE];
+		for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+		{
+			die_use[d] = 0;
+		}
+		
+		plane_use = new uint64_t[PLANES_PER_DIE];
+		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		{
+		    plane_use[p] = 0;
+		}
+		
+		block_use = new uint64_t[BLOCKS_PER_PLANE];
+		for(uint64_t b = 0; b < BLOCKS_PER_PLANE; b++)
+		{
+			block_use[b] = 0;
+		}
+
+		all_block_use = new uint64_t ***[NUM_PACKAGES];
+	    for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+		{
+			all_block_use[i] = new uint64_t **[DIES_PER_PACKAGE];
+			for(uint64_t j = 0; j < DIES_PER_PACKAGE; j++)
+			{
+				all_block_use[i][j] = new uint64_t *[PLANES_PER_DIE];
+				for(uint64_t k = 0; k < PLANES_PER_DIE; k++)
+				{
+					all_block_use[i][j][k] = new uint64_t[BLOCKS_PER_PLANE];
+					for(uint64_t l = 0; l < BLOCKS_PER_PLANE; l++)
+					{
+						all_block_use[i][j][k][l] = 0;
+					}
+				}
+			}
+	    }
+
+		// Init the block use histogram.
+		for (uint64_t i = 0; i <= BLOCK_HISTOGRAM_MAX; i += BLOCK_HISTOGRAM_BIN)
+		{
+			block_use_histogram[i] = 0;
+		}
 	}
 
 	idle_energy = vector<double>(NUM_PACKAGES, 0.0); 
@@ -534,6 +592,50 @@ void Logger::idle_write()
     num_idle_writes += 1;
 }
 
+void Logger::used_something(uint64_t channel, uint64_t die, uint64_t plane, uint64_t block)
+{
+	channel_use[channel] += 1;
+	die_use[die] += 1;
+	plane_use[plane] += 1;
+	block_use[block] += 1;
+	all_block_use[channel][die][plane][block] += 1;
+}
+
+void Logger::generate_block_use_histogram()
+{
+	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	{
+		for(uint64_t j = 0; j < DIES_PER_PACKAGE; j++)
+		{
+			for(uint64_t k = 0; k < PLANES_PER_DIE; k++)
+			{
+				for(uint64_t l = 0; l < BLOCKS_PER_PLANE; l++)
+				{
+					uint64_t bin = (all_block_use[i][j][k][l] / BLOCK_HISTOGRAM_BIN) * BLOCK_HISTOGRAM_BIN;
+					if (all_block_use[i][j][k][l] >= BLOCK_HISTOGRAM_MAX)
+						bin = BLOCK_HISTOGRAM_MAX;
+					uint64_t bin_cnt = block_use_histogram[bin];
+					block_use_histogram[bin] = bin_cnt + 1;
+				}
+			}
+		}
+	}
+}
+
+void Logger::refresh_blocked(bool write, uint64_t cycles)
+{
+	if(write)
+	{
+		num_write_refresh_blocked++;
+		average_write_refresh_delay += cycles;
+	}
+	else
+	{
+		num_read_refresh_blocked++;
+		average_read_refresh_delay += cycles;
+	}
+}
+
 void Logger::read_latency(uint64_t cycles)
 {
     average_read_latency += cycles;
@@ -738,6 +840,63 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"Read Throughput: " <<this->calc_throughput(cycle, num_reads)<<" KB/sec\n";
 	savefile<<"Write Throughput: " <<this->calc_throughput(cycle, num_writes)<<" KB/sec\n";
 
+	if(REFRESH_ENABLE)
+	{
+		savefile<<"\nConflict Frequency and Delay Data: \n";
+		savefile<<"========================\n";
+		savefile<<"Number of Accesses Blocked by a Refresh: " <<(num_read_refresh_blocked + num_write_refresh_blocked)<<"\n";
+		savefile<<"Number of Reads Blocked by a Refresh: " <<num_read_refresh_blocked<<"\n";
+		savefile<<"Number of Writes Blocked by a Refresh: " <<num_write_refresh_blocked<<"\n";
+
+		savefile<<"Average Refresh Delay: " <<(divide((float)(average_read_refresh_delay + average_write_refresh_delay),(float)(num_read_refresh_blocked + num_write_refresh_blocked)))<<" cycles \n";
+		savefile<<"Average Read Refresh Delay: " <<(divide((float)average_read_refresh_delay,(float)num_read_refresh_blocked))<<" cycles \n";
+		savefile<<"Average Write Refresh Delay: " <<(divide((float)average_write_refresh_delay,(float)num_write_refresh_blocked))<<" cycles \n";
+	}
+
+	// stuff for concurrency monitoring
+	if(CONCURRENCY_LOG)
+	{
+		savefile<<"\n Concurrency Data: \n";
+		savefile<<"========================\n";
+		savefile<<"\n Channel Usage: \n";
+		savefile<<"------------------------\n";
+		for(uint64_t c = 0; c < NUM_PACKAGES; c++)
+		{
+			savefile<<"Channel " << c << " : " << channel_use[c] << "\n";
+		}
+		
+		savefile<<"\n Die Usage: \n";
+		savefile<<"------------------------\n";
+		for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+		{
+			savefile<<"Die " << d << " : " << die_use[d] << "\n";
+		}
+
+		savefile<<"\n Plane Usage: \n";
+		savefile<<"------------------------\n";
+		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		{
+			savefile<<"Plane " << p << " : " << plane_use[p] << "\n";
+		}
+
+		savefile<<"\n Block Usage: \n";
+		savefile<<"------------------------\n";
+		for(uint64_t b = 0; b < BLOCKS_PER_PLANE; b++)
+		{
+			savefile<<"Block " << b << " : " << block_use[b] << "\n";
+		}
+
+		generate_block_use_histogram();
+		savefile<<"\n Block Usage Histogram: \n";
+		savefile<<"------------------------\n";
+		savefile << "BLOCK_HISTOGRAM_BIN: " << BLOCK_HISTOGRAM_BIN << "\n";
+		savefile << "BLOCK_HISTOGRAM_MAX: " << BLOCK_HISTOGRAM_MAX << "\n\n";
+		for (uint64_t bin = 0; bin <= BLOCK_HISTOGRAM_MAX; bin += BLOCK_HISTOGRAM_BIN)
+		{
+			savefile << bin << ": " << block_use_histogram[bin] << "\n";
+		}
+	}
+
 	savefile<<"\nQueue Length Data: \n";
 	savefile<<"========================\n";
 	savefile<<"Maximum Length of Ftl Queue: " <<max_ftl_queue_length<<"\n";
@@ -766,9 +925,9 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 	{
 	    savefile<<"Package: "<<i<<"\n";
-	    savefile<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Total Energy: "<<(total_energy[i] * 0.000000001)<<" mJ\n\n";
+	    savefile<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<" mJ\n\n";
 	 
 	    savefile<<"Average Idle Power: "<<ave_idle_power[i]<<" mW\n";
 	    savefile<<"Average Access Power: "<<ave_access_power[i]<<" mW\n";
@@ -817,9 +976,9 @@ void Logger::print(uint64_t cycle)
 	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 	{
 	    cout<<"Package: "<<i<<"\n";
-	    cout<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * 0.000000001)<<"mJ\n";
-	    cout<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * 0.000000001)<<"mJ\n";
-	    cout<<"Total Energy: "<<(total_energy[i] * 0.000000001)<<"mJ\n\n";
+	    cout<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
+	    cout<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
+	    cout<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<"mJ\n\n";
 	 
 	    cout<<"Average Idle Power: "<<ave_idle_power[i]<<"mW\n";
 	    cout<<"Average Access Power: "<<ave_access_power[i]<<"mW\n";
@@ -856,6 +1015,12 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
     this_epoch.num_write_unmapped = num_write_unmapped;
     this_epoch.num_write_mapped = num_write_mapped;
 		
+	this_epoch.num_read_refresh_blocked = num_read_refresh_blocked; 
+	this_epoch.num_write_refresh_blocked = num_write_refresh_blocked;
+	
+	this_epoch.average_read_refresh_delay = average_read_refresh_delay;
+	this_epoch.average_write_refresh_delay = average_write_refresh_delay;
+
     this_epoch.average_latency = average_latency;
     this_epoch.average_read_latency = average_read_latency;
     this_epoch.average_write_latency = average_write_latency;
@@ -898,6 +1063,12 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
 	this_epoch.num_read_mapped -= last_epoch.num_read_mapped;
 	this_epoch.num_write_unmapped -= last_epoch.num_write_unmapped;
 	this_epoch.num_write_mapped -= last_epoch.num_write_mapped;
+
+	this_epoch.num_read_refresh_blocked -= last_epoch.num_read_refresh_blocked; 
+	this_epoch.num_write_refresh_blocked -= last_epoch.num_write_refresh_blocked;
+	
+	this_epoch.average_read_refresh_delay -= last_epoch.average_read_refresh_delay;
+	this_epoch.average_write_refresh_delay -= last_epoch.average_write_refresh_delay;
 	
 	this_epoch.average_latency -= last_epoch.average_latency;
 	this_epoch.average_read_latency -= last_epoch.average_read_latency;
@@ -990,6 +1161,19 @@ void Logger::write_epoch(EpochEntry *e)
 	savefile<<"Number of Unmapped Writes: " <<e->num_write_unmapped<<"\n";
 	savefile<<"Number of Mapped Writes: " <<e->num_write_mapped<<"\n";
 
+	if(REFRESH_ENABLE)
+	{
+		savefile<<"\nConflict Frequency and Delay Data: \n";
+		savefile<<"========================\n";
+		savefile<<"Number of Accesses Blocked by a Refresh: " <<(e->num_read_refresh_blocked + e->num_write_refresh_blocked)<<"\n";
+		savefile<<"Number of Reads Blocked by a Refresh: " <<e->num_read_refresh_blocked<<"\n";
+		savefile<<"Number of Writes Blocked by a Refresh: " <<e->num_write_refresh_blocked<<"\n";
+
+		savefile<<"Average Refresh Delay: " <<(divide((float)(e->average_read_refresh_delay + e->average_write_refresh_delay),(float)(e->num_read_refresh_blocked + e->num_write_refresh_blocked)))<<" cycles\n";
+		savefile<<"Average Read Refresh Delay: " <<(divide((float)e->average_read_refresh_delay,(float)e->num_read_refresh_blocked))<<" cycles\n";
+		savefile<<"Average Write Refresh Delay: " <<(divide((float)e->average_write_refresh_delay,(float)e->num_write_refresh_blocked))<<" cycles\n";
+	}
+
 	savefile<<"\nThroughput and Latency Data: \n";
 	savefile<<"========================\n";
 	savefile<<"Average Read Latency: " <<(divide((float)e->average_read_latency,(float)e->num_reads))<<" cycles";
@@ -1030,9 +1214,9 @@ void Logger::write_epoch(EpochEntry *e)
 	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 	{
 	    savefile<<"Package: "<<i<<"\n";
-	    savefile<<"Accumulated Idle Energy: "<<(e->idle_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Accumulated Access Energy: "<<(e->access_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Total Energy: "<<(total_energy[i] * 0.000000001)<<" mJ\n\n";
+	    savefile<<"Accumulated Idle Energy: "<<(e->idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Access Energy: "<<(e->access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<" mJ\n\n";
 	 
 	    savefile<<"Average Idle Power: "<<ave_idle_power[i]<<" mW\n";
 	    savefile<<"Average Access Power: "<<ave_access_power[i]<<" mW\n";

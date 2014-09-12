@@ -53,9 +53,9 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	    numBlocks = numBlocks + 1;
 	}
 
-	channel_pointer = 0;
-	die_pointer = 0;
-	plane_pointer = 0;
+	channel = 0;
+	die = 0;
+	plane = 0;
 	lookupCounter = 0;
 
 	busy = 0;
@@ -130,6 +130,18 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 	    // actually randomizes stuff
 	    std::random_shuffle(randomAddrs.begin(), randomAddrs.end());
 	}
+
+	// get the bit lengths of various parts of the address for translating purposes
+	// unless we're doing addressing the old way and then whatever
+	if(addressScheme != Default)
+	{
+		channelBitWidth = nvdimm_log2(NUM_PACKAGES);
+		vaultBitWidth = nvdimm_log2(DIES_PER_PACKAGE);
+		bankBitWidth = nvdimm_log2(PLANES_PER_DIE);
+		rowBitWidth = nvdimm_log2(BLOCKS_PER_PLANE);
+		colBitWidth = nvdimm_log2(PAGES_PER_BLOCK);
+		colOffset = nvdimm_log2(NV_PAGE_SIZE);
+	}
 }
 
 ChannelPacket *Ftl::translate(ChannelPacketType type, uint64_t vAddr, uint64_t pAddr){
@@ -143,16 +155,241 @@ ChannelPacket *Ftl::translate(ChannelPacketType type, uint64_t vAddr, uint64_t p
 		exit(1);
 	}
 
-	physicalAddress /= NV_PAGE_SIZE;
-	page = physicalAddress % PAGES_PER_BLOCK;
-	physicalAddress /= PAGES_PER_BLOCK;
-	block = physicalAddress % BLOCKS_PER_PLANE;
-	physicalAddress /= BLOCKS_PER_PLANE;
-	plane = physicalAddress % PLANES_PER_DIE;
-	physicalAddress /= PLANES_PER_DIE;
-	die = physicalAddress % DIES_PER_PACKAGE;
-	physicalAddress /= DIES_PER_PACKAGE;
-	package = physicalAddress % NUM_PACKAGES;
+	if(wearLevelingScheme == DirectTranslation)
+	{
+		uint64_t tempA, tempB;
+		//if we have a power of two of sections then we can just split on bits
+		if(nvdimm_check_power2(BLOCKS_PER_PLANE))
+		{
+			// each sequence starts with the low order bits and works up to the high order bits
+			switch (addressScheme){
+			case ChannelVaultBankRowCol:
+				// need to clear out the zeroed bits below the access level
+				physicalAddress = physicalAddress >> colOffset;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> colBitWidth;
+				tempB = physicalAddress << colBitWidth;
+				page = tempA ^ tempB;			
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> rowBitWidth;
+				tempB = physicalAddress << rowBitWidth;
+				block = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> bankBitWidth;
+				tempB = physicalAddress << bankBitWidth;
+				plane = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> vaultBitWidth;
+				tempB = physicalAddress << vaultBitWidth;
+				die = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> channelBitWidth;
+				tempB = physicalAddress << channelBitWidth;
+				package = tempA ^ tempB;
+				break;
+			case ColRowBankVaultChannel:
+				// need to clear out the zeroed bits below the col level
+				physicalAddress = physicalAddress >> colOffset;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> channelBitWidth;
+				tempB = physicalAddress << channelBitWidth;
+				package = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> vaultBitWidth;
+				tempB = physicalAddress << vaultBitWidth;
+				die = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> bankBitWidth;
+				tempB = physicalAddress << bankBitWidth;
+				plane = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> rowBitWidth;
+				tempB = physicalAddress << rowBitWidth;
+				block = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> colBitWidth;
+				tempB = physicalAddress << colBitWidth;
+				page = tempA ^ tempB;
+				break;
+			case RowBankVaultChannelCol:
+				// need to clear out the zeroed bits below the col level
+				physicalAddress = physicalAddress >> colOffset;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> colBitWidth;
+				tempB = physicalAddress << colBitWidth;
+				page = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> channelBitWidth;
+				tempB = physicalAddress << channelBitWidth;
+				package = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> vaultBitWidth;
+				tempB = physicalAddress << vaultBitWidth;
+				die = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> bankBitWidth;
+				tempB = physicalAddress << bankBitWidth;
+				plane = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> rowBitWidth;
+				tempB = physicalAddress << rowBitWidth;
+				block = tempA ^ tempB;		
+				break;
+			case BankVaultChannelColRow:
+				// need to clear out the zeroed bits below the col level
+				physicalAddress = physicalAddress >> colOffset;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> rowBitWidth;
+				tempB = physicalAddress << rowBitWidth;
+				block = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> colBitWidth;
+				tempB = physicalAddress << colBitWidth;
+				page = tempA ^ tempB;
+
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> channelBitWidth;
+				tempB = physicalAddress << channelBitWidth;
+				package = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> vaultBitWidth;
+				tempB = physicalAddress << vaultBitWidth;
+				die = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> bankBitWidth;
+				tempB = physicalAddress << bankBitWidth;
+				plane = tempA ^ tempB;				
+				break;
+			case BankVaultColChannelRow:
+				// need to clear out the zeroed bits below the col level
+				physicalAddress = physicalAddress >> colOffset;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> rowBitWidth;
+				tempB = physicalAddress << rowBitWidth;
+				block = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> channelBitWidth;
+				tempB = physicalAddress << channelBitWidth;
+				package = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> colBitWidth;
+				tempB = physicalAddress << colBitWidth;
+				page = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> vaultBitWidth;
+				tempB = physicalAddress << vaultBitWidth;
+				die = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> bankBitWidth;
+				tempB = physicalAddress << bankBitWidth;
+				plane = tempA ^ tempB;			
+				break;
+			case BankChannelVaultColRow:
+				// need to clear out the zeroed bits below the col level
+				physicalAddress = physicalAddress >> colOffset;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> rowBitWidth;
+				tempB = physicalAddress << rowBitWidth;
+				block = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> colBitWidth;
+				tempB = physicalAddress << colBitWidth;
+				page = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> vaultBitWidth;
+				tempB = physicalAddress << vaultBitWidth;
+				die = tempA ^ tempB;
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> channelBitWidth;
+				tempB = physicalAddress << channelBitWidth;
+				package = tempA ^ tempB;		
+				
+				tempA = physicalAddress;
+				physicalAddress = physicalAddress >> bankBitWidth;
+				tempB = physicalAddress << bankBitWidth;
+				plane = tempA ^ tempB;			
+				break;
+			case Default:
+				physicalAddress /= NV_PAGE_SIZE;
+				page = physicalAddress % PAGES_PER_BLOCK;
+				physicalAddress /= PAGES_PER_BLOCK;
+				block = physicalAddress % BLOCKS_PER_PLANE;
+				physicalAddress /= BLOCKS_PER_PLANE;
+				plane = physicalAddress % PLANES_PER_DIE;
+				physicalAddress /= PLANES_PER_DIE;
+				die = physicalAddress % DIES_PER_PACKAGE;
+				physicalAddress /= DIES_PER_PACKAGE;
+				package = physicalAddress % NUM_PACKAGES;
+				break;
+			default:
+				physicalAddress /= NV_PAGE_SIZE;
+				page = physicalAddress % PAGES_PER_BLOCK;
+				physicalAddress /= PAGES_PER_BLOCK;
+				block = physicalAddress % BLOCKS_PER_PLANE;
+				physicalAddress /= BLOCKS_PER_PLANE;
+				plane = physicalAddress % PLANES_PER_DIE;
+				physicalAddress /= PLANES_PER_DIE;
+				die = physicalAddress % DIES_PER_PACKAGE;
+				physicalAddress /= DIES_PER_PACKAGE;
+				package = physicalAddress % NUM_PACKAGES;
+				break;
+			}
+		}
+		else
+		{
+			physicalAddress /= NV_PAGE_SIZE;
+			page = physicalAddress % PAGES_PER_BLOCK;
+			physicalAddress /= PAGES_PER_BLOCK;
+			block = physicalAddress % BLOCKS_PER_PLANE;
+			physicalAddress /= BLOCKS_PER_PLANE;
+			plane = physicalAddress % PLANES_PER_DIE;
+			physicalAddress /= PLANES_PER_DIE;
+			die = physicalAddress % DIES_PER_PACKAGE;
+			physicalAddress /= DIES_PER_PACKAGE;
+			package = physicalAddress % NUM_PACKAGES;
+		}
+	}
+	else
+	{
+		physicalAddress /= NV_PAGE_SIZE;
+		page = physicalAddress % PAGES_PER_BLOCK;
+		physicalAddress /= PAGES_PER_BLOCK;
+		block = physicalAddress % BLOCKS_PER_PLANE;
+		physicalAddress /= BLOCKS_PER_PLANE;
+		plane = physicalAddress % PLANES_PER_DIE;
+		physicalAddress /= PLANES_PER_DIE;
+		die = physicalAddress % DIES_PER_PACKAGE;
+		physicalAddress /= DIES_PER_PACKAGE;
+		package = physicalAddress % NUM_PACKAGES;
+	}
 
 	return new ChannelPacket(type, vAddr, pAddr, page, block, plane, die, package, NULL);
 }
@@ -402,11 +639,11 @@ void Ftl::handle_disk_read(bool gc)
 	if(wearLevelingScheme == RoundRobin)
 	{
 	    //update "write pointer"
-	    channel_pointer = (channel_pointer + 1) % NUM_PACKAGES;
-	    if (channel_pointer == 0){
-		die_pointer = (die_pointer + 1) % DIES_PER_PACKAGE;
-		if (die_pointer == 0)
-		    plane_pointer = (plane_pointer + 1) % PLANES_PER_DIE;
+	    channel = (channel + 1) % NUM_PACKAGES;
+	    if (channel == 0){
+		die = (die + 1) % DIES_PER_PACKAGE;
+		if (die == 0)
+		    plane = (plane + 1) % PLANES_PER_DIE;
 	    }
 	}
 	//=============================================================================
@@ -568,12 +805,29 @@ write_location Ftl::next_write_location(uint64_t vAddr)
 {
     if(wearLevelingScheme == StartGap)
     {
-	return start_gap_write_location(vAddr);
+		return start_gap_write_location(vAddr);
     }
+	else if(wearLevelingScheme == DirectTranslation)
+	{
+		// in direct translation, we just use the vAddr as the pAddr
+		return direct_write_location(vAddr);
+	}
     else
     {
-	return round_robin_write_location(vAddr);
+		return round_robin_write_location(vAddr);
     }
+}
+
+write_location Ftl::direct_write_location(uint64_t vAddr)
+{
+	write_location loc;
+
+	loc.address = vAddr;
+	loc.block = vAddr / BLOCK_SIZE;
+	loc.page = (vAddr / NV_PAGE_SIZE) % PAGES_PER_BLOCK;
+    loc.done = true;
+
+    return loc;
 }
     
 write_location Ftl::round_robin_write_location(uint64_t vAddr)
@@ -585,7 +839,7 @@ write_location Ftl::round_robin_write_location(uint64_t vAddr)
     write_location loc;
 
     //look for first free physical page starting at the write pointer
-    addr_start = BLOCKS_PER_PLANE * (plane_pointer + PLANES_PER_DIE * (die_pointer + DIES_PER_PACKAGE * channel_pointer));
+    addr_start = BLOCKS_PER_PLANE * (plane + PLANES_PER_DIE * (die + DIES_PER_PACKAGE * channel));
 	    
     // Search from the current write pointer to the end of the flash for a free page.
     for (block = addr_start ; block < TOTAL_SIZE / BLOCK_SIZE && !done; block++)
@@ -904,11 +1158,11 @@ void Ftl::handle_write(bool gc)
 	    if(itr_count == 0 && wearLevelingScheme == RoundRobin)
 	    {
 		//update "write pointer"
-		channel_pointer = (channel_pointer + 1) % NUM_PACKAGES;
-		if (channel_pointer == 0){
-		    die_pointer = (die_pointer + 1) % DIES_PER_PACKAGE;
-		    if (die_pointer == 0)
-			plane_pointer = (plane_pointer + 1) % PLANES_PER_DIE;
+		channel = (channel + 1) % NUM_PACKAGES;
+		if (channel == 0){
+		    die = (die + 1) % DIES_PER_PACKAGE;
+		    if (die == 0)
+			plane = (plane + 1) % PLANES_PER_DIE;
 		}
 	    }
 	}
@@ -918,7 +1172,7 @@ void Ftl::handle_write(bool gc)
 uint64_t Ftl::get_ptr(void) {
 	// Return a pointer to the current plane.
 	return NV_PAGE_SIZE * PAGES_PER_BLOCK * BLOCKS_PER_PLANE * 
-		(plane_pointer + PLANES_PER_DIE * (die_pointer + NUM_PACKAGES * channel_pointer));
+		(plane + PLANES_PER_DIE * (die + NUM_PACKAGES * channel));
 }
 
 void Ftl::handle_trim(void)

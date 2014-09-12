@@ -58,4 +58,38 @@ uint64_t divide_params_64b(float num, float denom);
 
 uint64_t subtract_params(uint64_t a, uint64_t b);
 
+// Utilities borrowed from DRAMSim2
+unsigned inline nvdimm_log2(unsigned value)
+{
+	unsigned logbase2 = 0;
+	unsigned orig = value;
+	value>>=1;
+	while (value>0)
+	{
+		value >>= 1;
+		logbase2++;
+	}
+	if (1U<<logbase2 < orig)
+		logbase2++;
+	return logbase2;
+}
+
+bool inline nvdimm_check_power2(unsigned value)
+{
+	unsigned logbase2 = 0;
+	unsigned orig = value;
+
+	value>>=1;
+	while (value>0)
+	{
+		value >>= 1;
+		logbase2++;
+	}
+	if(1U<<logbase2 != orig)
+	{
+		return false;
+	}
+	return true;
+}
+
 #endif

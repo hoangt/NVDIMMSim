@@ -297,6 +297,40 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"Read Throughput: " <<this->calc_throughput(cycle, num_reads)<<" KB/sec\n";
 	savefile<<"Write Throughput: " <<this->calc_throughput(cycle, num_writes)<<" KB/sec\n";
 
+	// stuff for concurrency monitoring
+	if(CONCURRENCY_LOG)
+	{
+		savefile<<"\n Concurrency Data: \n";
+		savefile<<"========================\n";
+		savefile<<"\n Channel Usage: \n";
+		savefile<<"------------------------\n";
+		for(uint64_t c = 0; c < NUM_PACKAGES; c++)
+		{
+			savefile<<"Channel " << c << " : " << channel_use[c] << "\n";
+		}
+		
+		savefile<<"\n Die Usage: \n";
+		savefile<<"------------------------\n";
+		for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+		{
+			savefile<<"Die " << d << " : " << die_use[d] << "\n";
+		}
+
+		savefile<<"\n Plane Usage: \n";
+		savefile<<"------------------------\n";
+		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		{
+			savefile<<"Plane " << p << " : " << plane_use[p] << "\n";
+		}
+
+		savefile<<"\n Block Usage: \n";
+		savefile<<"------------------------\n";
+		for(uint64_t b = 0; b < BLOCKS_PER_PLANE; b++)
+		{
+			savefile<<"Block " << b << " : " << block_use[b] << "\n";
+		}
+	}
+
 	savefile<<"\nQueue Length Data: \n";
 	savefile<<"========================\n";
 	savefile<<"Maximum Length of Ftl Queue: " <<max_ftl_queue_length<<"\n";
@@ -326,10 +360,10 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 	{
 	    savefile<<"Package: "<<i<<"\n";
-	    savefile<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Accumulated Erase Energy: "<<(erase_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Total Energy: "<<(total_energy[i] * 0.000000001)<<" mJ\n\n";
+	    savefile<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Erase Energy: "<<(erase_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<" mJ\n\n";
 	 
 	    savefile<<"Average Idle Power: "<<ave_idle_power[i]<<" mW\n";
 	    savefile<<"Average Access Power: "<<ave_access_power[i]<<" mW\n";
@@ -381,11 +415,11 @@ void GCLogger::print(uint64_t cycle) {
 	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 	{
 	    cout<<"Package: "<<i<<"\n";
-	    cout<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * 0.000000001)<<"mJ\n";
-	    cout<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * 0.000000001)<<"mJ\n";
-	    cout<<"Accumulated Erase Energy: "<<(erase_energy[i] * VCC * 0.000000001)<<"mJ\n";
+	    cout<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
+	    cout<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
+	    cout<<"Accumulated Erase Energy: "<<(erase_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
 	    
-	    cout<<"Total Energy: "<<(total_energy[i] * 0.000000001)<<"mJ\n\n";
+	    cout<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<"mJ\n\n";
 	 
 	    cout<<"Average Idle Power: "<<ave_idle_power[i]<<"mW\n";
 	    cout<<"Average Access Power: "<<ave_access_power[i]<<"mW\n";
@@ -626,10 +660,10 @@ void GCLogger::write_epoch(EpochEntry *e)
 	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
 	{
 	    savefile<<"Package: "<<i<<"\n";
-	    savefile<<"Accumulated Idle Energy: "<<(e->idle_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Accumulated Access Energy: "<<(e->access_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Accumulated Erase Energy: "<<(e->erase_energy[i] * VCC * 0.000000001)<<" mJ\n";
-	    savefile<<"Total Energy: "<<(total_energy[i] * 0.000000001)<<" mJ\n\n";
+	    savefile<<"Accumulated Idle Energy: "<<(e->idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Access Energy: "<<(e->access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Erase Energy: "<<(e->erase_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<" mJ\n\n";
 	 
 	    savefile<<"Average Idle Power: "<<ave_idle_power[i]<<" mW\n";
 	    savefile<<"Average Access Power: "<<ave_access_power[i]<<" mW\n";

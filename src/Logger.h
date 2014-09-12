@@ -55,7 +55,8 @@ namespace NVDSim
 	GC_READING,
 	WRITING,
 	GC_WRITING,
-	ERASING
+	ERASING,
+	REFRESHING
     };
     
     class Logger: public SimObj
@@ -82,6 +83,11 @@ namespace NVDSim
 	void write_unmapped();
 	void forced_write();
 	void idle_write(); // to determine how many times we're issuing writes when we don't have a read
+
+	void used_something(uint64_t channel, uint64_t die, uint64_t plane, uint64_t block);
+	void generate_block_use_histogram();
+	
+	void refresh_blocked(bool write, uint64_t cycles);
 
 	void read_latency(uint64_t cycles);
 	void write_latency(uint64_t cycles);
@@ -140,6 +146,12 @@ namespace NVDSim
 	uint64_t num_read_mapped;
 	uint64_t num_write_unmapped;
 	uint64_t num_write_mapped;
+
+	uint64_t num_read_refresh_blocked;
+	uint64_t num_write_refresh_blocked;
+	
+	uint64_t average_read_refresh_delay;
+	uint64_t average_write_refresh_delay;
 		
 	uint64_t average_latency;
 	uint64_t average_read_latency;
@@ -153,6 +165,14 @@ namespace NVDSim
 	std::vector<std::vector <uint64_t> > max_ctrl_queue_length;
 
 	std::unordered_map<uint64_t, uint64_t> writes_per_address;
+
+	// Concurrency tracking
+	uint64_t* channel_use;
+	uint64_t* die_use;
+	uint64_t* plane_use;
+	uint64_t* block_use;
+	uint64_t**** all_block_use;
+	unordered_map<uint64_t, uint64_t> block_use_histogram; // added this so we could see how well accesses were being distributed across all rows
 
 	// Extended logging state
 	bool first_write_log;
@@ -214,6 +234,14 @@ namespace NVDSim
 	    uint64_t num_read_mapped;
 	    uint64_t num_write_unmapped;
 	    uint64_t num_write_mapped;
+
+		uint64_t num_read_refresh_blocked;
+		uint64_t num_write_refresh_blocked;
+
+		uint64_t average_read_refresh_delay;
+		uint64_t average_write_refresh_delay;
+
+		uint64_t average_refresh_delay;
 		
 	    uint64_t average_latency;
 	    uint64_t average_read_latency;
@@ -244,7 +272,15 @@ namespace NVDSim
 		num_read_mapped = 0;
 		num_write_unmapped = 0;
 		num_write_mapped = 0;
+
+		num_read_refresh_blocked = 0;
+		num_write_refresh_blocked = 0;
 		
+		average_read_refresh_delay = 0;
+		average_write_refresh_delay = 0;
+		
+		average_refresh_delay = 0;
+
 		average_latency = 0;
 		average_read_latency = 0;
 		average_write_latency = 0;
