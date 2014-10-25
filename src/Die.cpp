@@ -84,7 +84,6 @@ void Die::attachToBuffer(Buffer *buff){
 
 void Die::receiveFromBuffer(ChannelPacket *busPacket){
 	if (busPacket->busPacketType == DATA){
-	    cout << "got data for a write to plane " << busPacket->plane << "\n";
 		planes[busPacket->plane].storeInData(busPacket);
 	} else if (currentCommands[busPacket->plane] == NULL || (busPacket->busPacketType == AUTO_REFRESH && currentCommands[plane_rpointer] == NULL)) {
 		if(busPacket->busPacketType != AUTO_REFRESH)
@@ -104,7 +103,6 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 		switch (busPacket->busPacketType){
 			case READ:
 		        case GC_READ:
-			    cout << "got a read for plane " << busPacket->plane << "\n";
 					planes[busPacket->plane].read(busPacket);
 					if(busPacket->page == open_row[busPacket->plane][busPacket->block] && OPEN_ROW_ENABLE)
 					{
@@ -130,7 +128,6 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 				break;
 			case WRITE:
 			case GC_WRITE:
-			    cout << "got a write for plane " << busPacket->plane << "\n";
 			        planes[busPacket->plane].write(busPacket);
 					parentNVDIMM->numWrites++;	
 					if(busPacket->page == open_row[busPacket->plane][busPacket->block] && OPEN_ROW_ENABLE)
