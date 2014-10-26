@@ -186,6 +186,13 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 				    log->log_plane_state(busPacket->virtualAddress, busPacket->package, busPacket->die, busPacket->plane, ERASING);
 				}
 				break;
+			case AUTO_REFRESH:
+				addRefreshes(busPacket);
+				updateRefreshPointer();
+				break;
+		        case SELF_REFRESH:
+				cout << "somehow called self refresh mode, this isn't ready yet \n";
+				break;
 			default:
 				break;			
 		}
