@@ -44,6 +44,8 @@ Logger::Logger()
 	num_idle_writes = 0;
 	num_forced = 0;
 
+	num_row_hits = 0;
+
 	// NOTE: Temporary debuging stuff **********************
 	num_locks = 0;
 	time_locked = 0;
@@ -548,6 +550,11 @@ void Logger::unlocked_up(uint64_t count)
     time_locked += count;
 }
 
+void Logger::row_hit()
+{
+	num_row_hits += 1;
+}
+
 void Logger::mapped()
 {
 	num_mapped += 1;
@@ -818,6 +825,8 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"Writes completed: "<<num_writes<<"\n";
 	savefile<<"Idle Writes issued: "<<num_idle_writes<<"\n";
 	savefile<<"Writes forced: " <<num_forced<<"\n";
+	savefile<<"Row Hits: " << num_row_hits<<"\n";
+	savefile<<"Row Hit Percentage: " <<(divide((float)num_row_hits, (float)num_accesses))<<"\n"; 
 	savefile<<"Number of Unmapped Accesses: " <<num_unmapped<<"\n";
 	savefile<<"Number of Mapped Accesses: " <<num_mapped<<"\n";
 	savefile<<"Number of Unmapped Reads: " <<num_read_unmapped<<"\n";
@@ -1006,6 +1015,8 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
     this_epoch.num_accesses = num_accesses;
     this_epoch.num_reads = num_reads;
     this_epoch.num_writes = num_writes;
+
+    this_epoch.num_row_hits = num_row_hits;
 	
     this_epoch.num_unmapped = num_unmapped;
     this_epoch.num_mapped = num_mapped;
@@ -1055,6 +1066,8 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
 	this_epoch.num_accesses -= last_epoch.num_accesses;
 	this_epoch.num_reads -= last_epoch.num_reads;
 	this_epoch.num_writes -= last_epoch.num_writes;
+
+	this_epoch.num_row_hits -= last_epoch.num_row_hits;
 	
 	this_epoch.num_unmapped -= last_epoch.num_unmapped;
 	this_epoch.num_mapped -= last_epoch.num_mapped;
@@ -1154,6 +1167,8 @@ void Logger::write_epoch(EpochEntry *e)
 	savefile<<"Accesses completed: "<<e->num_accesses<<"\n";
 	savefile<<"Reads completed: "<<e->num_reads<<"\n";
 	savefile<<"Writes completed: "<<e->num_writes<<"\n";
+	savefile<<"Row Hits: "<<e->num_row_hits<<"\n";
+	savefile<<"Row Hit Percentage: "<<(divide((float)e->num_row_hits, (float)e->num_accesses))<<"\n"; 
 	savefile<<"Number of Unmapped Accesses: " <<e->num_unmapped<<"\n";
 	savefile<<"Number of Mapped Accesses: " <<e->num_mapped<<"\n";
 	savefile<<"Number of Unmapped Reads: " <<e->num_read_unmapped<<"\n";

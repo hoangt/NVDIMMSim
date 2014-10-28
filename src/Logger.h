@@ -77,6 +77,8 @@ namespace NVDSim
 	void locked_up(uint64_t cycle);
 	void unlocked_up(uint64_t count);
 
+	void row_hit();
+
 	void read_mapped();
 	void read_unmapped();
 	void write_mapped();
@@ -134,6 +136,8 @@ namespace NVDSim
 	uint64_t num_writes;
 	uint64_t num_idle_writes;
 	uint64_t num_forced;
+
+	uint64_t num_row_hits;
 
 	uint64_t num_locks;
 	uint64_t time_locked;
@@ -227,14 +231,16 @@ namespace NVDSim
 	    uint64_t num_reads;
 	    uint64_t num_writes;
 
+	    uint64_t num_row_hits;
+
 	    uint64_t num_unmapped;
 	    uint64_t num_mapped;
 
 	    uint64_t num_read_unmapped;
 	    uint64_t num_read_mapped;
 	    uint64_t num_write_unmapped;
-	    uint64_t num_write_mapped;
-
+	    uint64_t num_write_mapped;    
+	
 		uint64_t num_read_refresh_blocked;
 		uint64_t num_write_refresh_blocked;
 
@@ -264,6 +270,8 @@ namespace NVDSim
 		num_accesses = 0;
 		num_reads = 0;
 		num_writes = 0;
+		
+		num_row_hits = 0;
 	
 		num_unmapped = 0;
 		num_mapped = 0;

@@ -107,6 +107,10 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 					if(busPacket->page == open_row[busPacket->plane][busPacket->block] && OPEN_ROW_ENABLE)
 					{
 						controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
+						if(LOGGING)
+						{
+							log->row_hit();
+						}
 					}
 					else
 					{						
@@ -133,6 +137,10 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 					if(busPacket->page == open_row[busPacket->plane][busPacket->block] && OPEN_ROW_ENABLE)
 					{
 						controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
+						if(LOGGING)
+						{
+							log->row_hit();
+						}
 					}
 					else
 					{
