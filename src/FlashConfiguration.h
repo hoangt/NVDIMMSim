@@ -157,6 +157,9 @@ extern uint64_t REFRESH_PERIOD; // time each cell can go without being refreshed
 extern std::string REFRESH_LEVEL; // number of banks that refresh in parallel
 extern RefreshScheme refreshLevel;
 
+// Read / Write Interleaving Options
+extern bool RW_INTERLEAVE_ENABLE;
+
 // Write blocking avoidance
 extern bool WRITE_PAUSING;
 extern bool WRITE_CANCELATION;

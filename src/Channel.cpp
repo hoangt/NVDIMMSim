@@ -87,7 +87,6 @@ int Channel::obtainChannel(uint64_t s, SenderType t, ChannelPacket *p){
 		   (!BUFFERED && (p->busPacketType == READ || p->busPacketType == GC_READ) && 
 			(dieBusy == 3 ||
 			 (dieBusy == 4))) ||
-		   // skullcrusher only has 1 register so you can't send reads or writes while the plane is busy
 		   (REFRESH_ENABLE && p->busPacketType == AUTO_REFRESH && !buffer->dies[p->die]->canDieRefresh()) ||
 		   (busy == 1))
 			{

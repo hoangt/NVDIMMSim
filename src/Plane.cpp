@@ -52,7 +52,6 @@ void Plane::read(ChannelPacket *busPacket){
 	    ERROR("Invalid read: Block "<<busPacket->block<<" hasn't been written to. Address was "<<busPacket->virtualAddress);
 	}
 
-	// Put this packet on the data register if the cache register is occupied,
 	if(dataReg == NULL)
 	{
 	    dataReg = busPacket;
@@ -74,18 +73,23 @@ void Plane::write(ChannelPacket *busPacket){
 	{
 	    blocks[busPacket->block].write(busPacket->page, NULL);
 	}
-	// move the data from the cacheReg to the dataReg for input into the flash array
-	// safety first...
-	else if(cacheReg != NULL)
+	// if we're interleaving
+	else if(RW_INTERLEAVE_ENABLE)
 	{
-	    dataReg = cacheReg;
-	    cacheReg = NULL;
+		// move the data from the cacheReg to the dataReg for input into the flash array
+		// safety first...
+		if(cacheReg != NULL)
+		{
+			dataReg = cacheReg;
+			cacheReg = NULL;
+		}
+		else
+		{
+			ERROR("Invalid write: cacheReg was NULL when block "<<busPacket->block<<"was written to");
+			abort();
+		}
 	}
-	else
-	{
-	    ERROR("Invalid write: cacheReg was NULL when block "<<busPacket->block<<"was written to");
-	    abort();
-	}
+	// if we're not interleaving, then we don't need to do anything because everything is already in the data reg
 }
 
 void Plane::writeDone(ChannelPacket *busPacket)
@@ -107,25 +111,33 @@ void Plane::erase(ChannelPacket *busPacket){
 
 
 void Plane::storeInData(ChannelPacket *busPacket){
-    if(cacheReg == NULL)
+    if(RW_INTERLEAVE_ENABLE && cacheReg == NULL)
     {
-	cacheReg= busPacket;
+	    cacheReg= busPacket;
+    }
+    else if(!RW_INTERLEAVE_ENABLE && dataReg == NULL)
+    {
+	    dataReg = busPacket;
     }
     else
     {
-	// no more room in this inn, somebody fucked up and it was probably me
-	ERROR("tried to add write data to plane "<<busPacket->plane<<" but both of its registers were full");
-	abort();
+	    // no more room in this inn, somebody fucked up and it was probably me
+	    ERROR("tried to add write data to plane "<<busPacket->plane<<" but both of its registers were full");
+	    abort();
     }
 }
 
 ChannelPacket *Plane::readFromData(void){
-    if(cacheReg == NULL && dataReg != NULL)
+    if(RW_INTERLEAVE_ENABLE && cacheReg == NULL && dataReg != NULL)
     {
 	//cout << "read data from the cacheReg \n";
 	cacheReg = dataReg;
 	dataReg = NULL;
 	return cacheReg;
+    }
+    else if (dataReg != NULL)
+    {
+	    return dataReg;
     }
     // should never get here
     abort();
@@ -152,7 +164,10 @@ bool Plane::checkDataReg(void)
 void Plane::dataGone(void)
 {
     // read no longer needs this register
-    cacheReg = NULL;
+	if(RW_INTERLEAVE_ENABLE)
+		cacheReg = NULL;
+	else
+		dataReg = NULL;
 }
 
 void Plane::clearWrite(void)

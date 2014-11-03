@@ -214,42 +214,61 @@ int Die::isDieBusy(uint64_t plane){
     // not doing anything right now
     // if we're sending, then we're buffering and the channel between the buffer and the die
     // is busy and data can't be sent to the die right now
-    if (currentCommands[plane] == NULL && sending == false){
-	if(planes[plane].checkCacheReg() == true && planes[plane].checkDataReg() == true)
+	if(RW_INTERLEAVE_ENABLE)
 	{
-	    // not currently doing anything and room in both regs
-	    return 0;
-	}
-	else if(planes[plane].checkDataReg() == false)
-	{
-	    // not currently doing anything but there is no room in the data reg
-	    return 4;
-	}
-	else if(planes[plane].checkCacheReg() == false)
-	{
-	    // not currently doing anything but there is no room in the cache reg
-	    return 5;
+		if (currentCommands[plane] == NULL && sending == false){
+			if(planes[plane].checkCacheReg() == true && planes[plane].checkDataReg() == true)
+			{
+				// not currently doing anything and room in both regs
+				return 0;
+			}
+			else if(planes[plane].checkDataReg() == false)
+			{
+				// not currently doing anything but there is no room in the data reg
+				return 4;
+			}
+			else if(planes[plane].checkCacheReg() == false)
+			{
+				// not currently doing anything but there is no room in the cache reg
+				return 5;
+			}
+			else
+			{
+				// not currently doing anything but there is no room in either reg
+				return 3;
+			}
+		}
+		// writing, send back a special number so we know that this plane can recieve data
+		else if (currentCommands[plane] != NULL)
+		{
+			if(currentCommands[plane]->busPacketType == WRITE && planes[plane].checkCacheReg() == true)
+			{
+				return 2;
+			}
+			else if(currentCommands[plane]->busPacketType == WRITE)
+			{
+				return 6;
+			}
+		}
+		// busy but not writing so no data, please, we're all full up here
+		return 1;
 	}
 	else
 	{
-	    // not currently doing anything but there is no room in either reg
-	    return 3;
+		// if the plane is currently no busy
+		if (currentCommands[plane] == NULL && sending == false)
+		{
+			// if the plane has room in its row buffer
+			if(planes[plane].checkDataReg() == true)
+			{
+				return 0;
+			}
+			// we're not doing anything but there's still no room
+			return 3;
+		}
+		// busy, come back later
+		return 1;
 	}
-    }
-    // writing, send back a special number so we know that this plane can recieve data
-    else if (currentCommands[plane] != NULL)
-    {
-	if(currentCommands[plane]->busPacketType == WRITE && planes[plane].checkCacheReg() == true)
-	{
-	    return 2;
-	}
-	else if(currentCommands[plane]->busPacketType == WRITE)
-	{
-	    return 6;
-	}
-    }
-    // busy but not writing so no data, please, we're all full up here
-    return 1;
 }
 
 void Die::testDieRefresh(uint64_t plane, uint64_t block, bool write)
@@ -306,7 +325,8 @@ void Die::update(void){
 				// Process each command based on the packet type.
 				switch (currentCommand->busPacketType){
 				case READ:
-					if(planes[currentCommand->plane].checkCacheReg())
+					if((RW_INTERLEAVE_ENABLE && planes[currentCommand->plane].checkCacheReg()) ||
+					   (!RW_INTERLEAVE_ENABLE && planes[currentCommand->plane].checkDataReg()))
 					{
 						returnDataPackets.push(planes[currentCommand->plane].readFromData());
 						no_reg_room = false;
@@ -317,7 +337,8 @@ void Die::update(void){
 					}
 					break;
 				case GC_READ:
-					if(planes[currentCommand->plane].checkCacheReg())
+					if((RW_INTERLEAVE_ENABLE && planes[currentCommand->plane].checkCacheReg()) ||
+					   (!RW_INTERLEAVE_ENABLE && planes[currentCommand->plane].checkDataReg()))
 					{
 						returnDataPackets.push(planes[currentCommand->plane].readFromData());
 						parentNVDIMM->GCReadDone(currentCommand->virtualAddress);
@@ -475,7 +496,7 @@ void Die::update(void){
 				dataCyclesLeft--;
 			}else{
 				// is there a read waiting for us and are we not doing something already
-				if(channel_pointer->controller->dataReady(returnDataPackets.front()->package, returnDataPackets.front()->die, returnDataPackets.front()->plane) == 0 ||
+				if(!RW_INTERLEAVE_ENABLE || channel_pointer->controller->dataReady(returnDataPackets.front()->package, returnDataPackets.front()->die, returnDataPackets.front()->plane) == 0 ||
 				   currentCommands[returnDataPackets.front()->plane] != NULL)
 				{
 					if(channel_pointer->obtainChannel(id, BUFFER, NULL))
