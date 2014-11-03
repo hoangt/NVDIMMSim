@@ -325,8 +325,7 @@ void Die::update(void){
 				// Process each command based on the packet type.
 				switch (currentCommand->busPacketType){
 				case READ:
-					if((RW_INTERLEAVE_ENABLE && planes[currentCommand->plane].checkCacheReg()) ||
-					   (!RW_INTERLEAVE_ENABLE && planes[currentCommand->plane].checkDataReg()))
+					if(!RW_INTERLEAVE_ENABLE || planes[currentCommand->plane].checkCacheReg())
 					{
 						returnDataPackets.push(planes[currentCommand->plane].readFromData());
 						no_reg_room = false;
@@ -337,8 +336,7 @@ void Die::update(void){
 					}
 					break;
 				case GC_READ:
-					if((RW_INTERLEAVE_ENABLE && planes[currentCommand->plane].checkCacheReg()) ||
-					   (!RW_INTERLEAVE_ENABLE && planes[currentCommand->plane].checkDataReg()))
+					if(!RW_INTERLEAVE_ENABLE || planes[currentCommand->plane].checkCacheReg())
 					{
 						returnDataPackets.push(planes[currentCommand->plane].readFromData());
 						parentNVDIMM->GCReadDone(currentCommand->virtualAddress);
