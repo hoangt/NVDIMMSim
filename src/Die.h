@@ -91,7 +91,7 @@ namespace NVDSim{
 			std::vector<ChannelPacket *> pausedCommands;
 
 			// DRAM row locality support
-			std::vector<vector<uint64_t>> open_row;
+			std::vector<uint64_t> open_row;
 
 			//for logging purposes
 			std::vector<bool> refresh_blocked; 

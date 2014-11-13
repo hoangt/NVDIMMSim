@@ -73,7 +73,7 @@ Die::Die(NVDIMM *parent, Logger *l, uint64_t idNum){
 	}
 	
 	// this stores the page number of the open row in the bank
-	open_row = vector<vector<uint64_t> >(PLANES_PER_DIE, vector<uint64_t>(BLOCKS_PER_PLANE, PAGES_PER_BLOCK+1));
+	open_row = vector<uint64_t>(PLANES_PER_DIE, BLOCKS_PER_PLANE+1);
 }
 
 void Die::attachToBuffer(Buffer *buff){
@@ -104,7 +104,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			case READ:
 		        case GC_READ:
 					planes[busPacket->plane].read(busPacket);
-					if(busPacket->page == open_row[busPacket->plane][busPacket->block] && OPEN_ROW_ENABLE)
+					if(busPacket->block == open_row[busPacket->plane] && OPEN_ROW_ENABLE)
 					{
 						controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
 						if(LOGGING)
@@ -115,7 +115,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 					else
 					{						
 						controlCyclesLeft[busPacket->plane]= READ_CYCLES;
-						open_row[busPacket->plane][busPacket->block] = busPacket->page;
+						open_row[busPacket->plane] = busPacket->block;
 					}
 				// log the new state of this plane
 				if(LOGGING && PLANE_STATE_LOG)
@@ -134,7 +134,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			case GC_WRITE:
 			        planes[busPacket->plane].write(busPacket);
 					parentNVDIMM->numWrites++;	
-					if(busPacket->page == open_row[busPacket->plane][busPacket->block] && OPEN_ROW_ENABLE)
+					if(busPacket->block == open_row[busPacket->plane] && OPEN_ROW_ENABLE)
 					{
 						controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
 						if(LOGGING)
@@ -145,7 +145,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 					else
 					{
 						controlCyclesLeft[busPacket->plane]= WRITE_CYCLES;
-						open_row[busPacket->plane][busPacket->block] = busPacket->page;						
+						open_row[busPacket->plane] = busPacket->block;						
 					}
 					writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
 
