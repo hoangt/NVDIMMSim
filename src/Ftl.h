@@ -44,6 +44,7 @@
 #include <algorithm>
 #include "SimObj.h"
 #include "FlashConfiguration.h"
+#include "Init.h"
 #include "ChannelPacket.h"
 #include "FlashTransaction.h"
 #include "Controller.h"
@@ -63,7 +64,7 @@ namespace NVDSim{
 	class Ftl : public SimObj{
 
 		public:
-	                Ftl(Controller *c, Logger *l, NVDIMM *p);
+	                Ftl(Configuration &nv_cfg, Controller *c, Logger *l, NVDIMM *p);
 
 			ChannelPacket *translate(ChannelPacketType type, uint64_t vAddr, uint64_t pAddr);
 			bool attemptAdd(FlashTransaction &t, std::list<FlashTransaction> *queue, uint64_t queue_limit);
@@ -103,6 +104,8 @@ namespace NVDSim{
 			void flushWriteQueues(void);
 
 			virtual void GCReadDone(uint64_t vAddr);
+
+			Configuration &cfg;
 		       
 			Controller *controller;
 

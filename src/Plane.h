@@ -37,13 +37,14 @@
 //header file for the Plane class
 
 #include "FlashConfiguration.h"
+#include "Init.h"
 #include "Block.h"
 #include "ChannelPacket.h"
 
 namespace NVDSim{
 	class Plane{
 		public:
-			Plane(void);
+			Plane(Configuration &nv_cfg);
 			void read(ChannelPacket *busPacket);
 			void write(ChannelPacket *busPacket);
 			void writeDone(ChannelPacket *busPacket);
@@ -56,6 +57,7 @@ namespace NVDSim{
 			void dataGone(void);
 			void clearWrite(void);
 		private:
+			Configuration &cfg;
 			ChannelPacket *dataReg, *cacheReg;
 			std::unordered_map<uint64_t, Block> blocks;
 	};

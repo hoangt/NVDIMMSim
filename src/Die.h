@@ -38,6 +38,7 @@
 
 #include "SimObj.h"
 #include "FlashConfiguration.h"
+#include "Init.h"
 #include "ChannelPacket.h"
 #include "Plane.h"
 #include "Logger.h"
@@ -51,7 +52,7 @@ namespace NVDSim{
 	class Ftl;
 	class Die : public SimObj{
 		public:
-	                Die(NVDIMM *parent, Logger *l, uint64_t id);
+	                Die(Configuration &nv_cfg, NVDIMM *parent, Logger *l, uint64_t id);
 			void attachToBuffer(Buffer *buff);
 			void receiveFromBuffer(ChannelPacket *busPacket);
 			int isDieBusy(uint64_t plane);
@@ -74,6 +75,7 @@ namespace NVDSim{
 			// for fast forwarding
 			void writeToPlane(ChannelPacket *packet);
 
+			Configuration &cfg;
 			uint64_t id;
 
 		private:

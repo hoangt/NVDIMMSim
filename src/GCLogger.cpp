@@ -36,8 +36,8 @@
 using namespace NVDSim;
 using namespace std;
 
-GCLogger::GCLogger()
-  : Logger()
+GCLogger::GCLogger(Configuration &nv_cfg)
+  : Logger(nv_cfg)
 {
     	num_erases = 0;
 	num_gcreads = 0;
@@ -50,16 +50,16 @@ GCLogger::GCLogger()
 	gc_queue_length = 0;
 	max_gc_queue_length = 0;
 
-	erase_energy = vector<double>(NUM_PACKAGES, 0.0); 
+	erase_energy = vector<double>(cfg.NUM_PACKAGES, 0.0); 
 }
 
 void GCLogger::update()
 {
     	//update idle energy
 	//since this is already subtracted from the access energies we just do it every time
-	for(uint64_t i = 0; i < (NUM_PACKAGES); i++)
+	for(uint64_t i = 0; i < (cfg.NUM_PACKAGES); i++)
 	{
-	  idle_energy[i] += STANDBY_I;
+	  idle_energy[i] += cfg.STANDBY_I;
 	}
 
 	this->step();
@@ -81,17 +81,17 @@ void GCLogger::access_stop(uint64_t addr, uint64_t paddr)
 	if (a.op == READ)
 	{
 	     //update access energy figures
-	    access_energy[a.package] += (READ_I - STANDBY_I) * READ_TIME/2;
+	    access_energy[a.package] += (cfg.READ_I - cfg.STANDBY_I) * cfg.READ_TIME/2;
 	    this->read();
 	    this->read_latency(a.stop - a.start);
 	}
 	else if (a.op == WRITE)
 	{
 	    //update access energy figures
-	    access_energy[a.package] += (WRITE_I - STANDBY_I) * WRITE_TIME/2;
+	    access_energy[a.package] += (cfg.WRITE_I - cfg.STANDBY_I) * cfg.WRITE_TIME/2;
 	    this->write();
 	    this->write_latency(a.stop - a.start);
-	    if(WEAR_LEVEL_LOG)
+	    if(cfg.WEAR_LEVEL_LOG)
 	    {
 		if(writes_per_address.count(a.pAddr) == 0)
 		{
@@ -106,24 +106,24 @@ void GCLogger::access_stop(uint64_t addr, uint64_t paddr)
 	else if (a.op == ERASE)
 	{
 	    //update access energy figures
-	    erase_energy[a.package] += (ERASE_I - STANDBY_I) * ERASE_TIME/2;
+	    erase_energy[a.package] += (cfg.ERASE_I - cfg.STANDBY_I) * cfg.ERASE_TIME/2;
 	    this->erase();
 	    this->erase_latency(a.stop - a.start);
 	}
 	else if (a.op == GC_READ)
 	{
 	    //update access energy figures
-	    access_energy[a.package] += (READ_I - STANDBY_I) * READ_TIME/2;
+	    access_energy[a.package] += (cfg.READ_I - cfg.STANDBY_I) * cfg.READ_TIME/2;
 	    this->gcread();
 	    this->gcread_latency(a.stop - a.start);
 	}
 	else if (a.op == GC_WRITE)
 	{
 	     //update access energy figures
-	    access_energy[a.package] += (WRITE_I - STANDBY_I) * WRITE_TIME/2;
+	    access_energy[a.package] += (cfg.WRITE_I - cfg.STANDBY_I) * cfg.WRITE_TIME/2;
 	    this->gcwrite();
 	    this->gcwrite_latency(a.stop - a.start);
-	    if(WEAR_LEVEL_LOG)
+	    if(cfg.WEAR_LEVEL_LOG)
 	    {
 		if(writes_per_address.count(a.pAddr) == 0)
 		{
@@ -207,22 +207,22 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 {
         // Power stuff
 	// Total power used
-	vector<double> total_energy = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> total_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
 	
         // Average power used
-	vector<double> ave_idle_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> ave_access_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> ave_erase_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> average_power = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> ave_idle_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> ave_access_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> ave_erase_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> average_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    if(cycle != 0)
 	    {
-		total_energy[i] = (idle_energy[i] + access_energy[i] + erase_energy[i]) * VCC;
-		ave_idle_power[i] = (idle_energy[i] * VCC) / cycle;
-		ave_access_power[i] = (access_energy[i] * VCC) / cycle;
-		ave_erase_power[i] = (erase_energy[i] * VCC) / cycle;	  
+		total_energy[i] = (idle_energy[i] + access_energy[i] + erase_energy[i]) * cfg.VCC;
+		ave_idle_power[i] = (idle_energy[i] * cfg.VCC) / cycle;
+		ave_access_power[i] = (access_energy[i] * cfg.VCC) / cycle;
+		ave_erase_power[i] = (erase_energy[i] * cfg.VCC) / cycle;	  
 		average_power[i] = total_energy[i] / cycle;
 	    }
 	    else
@@ -235,14 +235,14 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 	    }
 	}
 
-	string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+	string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 	const char * command = command_str.c_str();
 	int sys_done = system(command);
 	if (sys_done != 0)
 	{
 	    WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 	}
-	savefile.open(LOG_DIR+"NVDIMM.log", ios_base::out | ios_base::trunc);
+	savefile.open(cfg.LOG_DIR+"NVDIMM.log", ios_base::out | ios_base::trunc);
 	savefile<<"NVDIMM Log \n";
 
 	if (!savefile) 
@@ -282,50 +282,50 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"\nThroughput and Latency Data: \n";
 	savefile<<"========================\n";
 	savefile<<"Average Read Latency: " <<(divide((float)average_read_latency,(float)num_reads))<<" cycles";
-	savefile<<" (" <<(divide((float)average_read_latency,(float)num_reads)*CYCLE_TIME)<<" ns)\n";
+	savefile<<" (" <<(divide((float)average_read_latency,(float)num_reads)*cfg.CYCLE_TIME)<<" ns)\n";
 	savefile<<"Average Write Latency: " <<divide((float)average_write_latency,(float)num_writes)<<" cycles";
-	savefile<<" (" <<(divide((float)average_write_latency,(float)num_writes))*CYCLE_TIME<<" ns)\n";	
+	savefile<<" (" <<(divide((float)average_write_latency,(float)num_writes))*cfg.CYCLE_TIME<<" ns)\n";	
 	savefile<<"Average Erase Latency: " <<divide((float)average_erase_latency,(float)num_erases)<<" cycles";
-	savefile<<" (" <<(divide((float)average_erase_latency,(float)num_erases))*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<(divide((float)average_erase_latency,(float)num_erases))*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Average Garbage Collector initiated Read Latency: " <<divide((float)average_gcread_latency,(float)num_gcreads)<<" cycles";
-	savefile<<" (" <<divide((float)average_gcread_latency,(float)num_gcreads)*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<divide((float)average_gcread_latency,(float)num_gcreads)*cfg.CYCLE_TIME<<" ns)\n";
         savefile<<"Average Garbage Collector initiated Write Latency: " <<divide((float)average_gcwrite_latency,(float)num_gcwrites)<<" cycles";
-	savefile<<" (" <<divide((float)average_gcwrite_latency,(float)num_gcwrites)*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<divide((float)average_gcwrite_latency,(float)num_gcwrites)*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Average Queue Latency: " <<divide((float)average_queue_latency,(float)num_accesses)<<" cycles";
-	savefile<<" (" <<(divide((float)average_queue_latency,(float)num_accesses))*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<(divide((float)average_queue_latency,(float)num_accesses))*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Total Throughput: " <<this->calc_throughput(cycle, num_accesses)<<" KB/sec\n";
 	savefile<<"Read Throughput: " <<this->calc_throughput(cycle, num_reads)<<" KB/sec\n";
 	savefile<<"Write Throughput: " <<this->calc_throughput(cycle, num_writes)<<" KB/sec\n";
 
 	// stuff for concurrency monitoring
-	if(CONCURRENCY_LOG)
+	if(cfg.CONCURRENCY_LOG)
 	{
 		savefile<<"\n Concurrency Data: \n";
 		savefile<<"========================\n";
 		savefile<<"\n Channel Usage: \n";
 		savefile<<"------------------------\n";
-		for(uint64_t c = 0; c < NUM_PACKAGES; c++)
+		for(uint64_t c = 0; c < cfg.NUM_PACKAGES; c++)
 		{
 			savefile<<"Channel " << c << " : " << channel_use[c] << "\n";
 		}
 		
 		savefile<<"\n Die Usage: \n";
 		savefile<<"------------------------\n";
-		for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+		for(uint64_t d = 0; d < cfg.DIES_PER_PACKAGE; d++)
 		{
 			savefile<<"Die " << d << " : " << die_use[d] << "\n";
 		}
 
 		savefile<<"\n Plane Usage: \n";
 		savefile<<"------------------------\n";
-		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		for(uint64_t p = 0; p < cfg.PLANES_PER_DIE; p++)
 		{
 			savefile<<"Plane " << p << " : " << plane_use[p] << "\n";
 		}
 
 		savefile<<"\n Block Usage: \n";
 		savefile<<"------------------------\n";
-		for(uint64_t b = 0; b < BLOCKS_PER_PLANE; b++)
+		for(uint64_t b = 0; b < cfg.BLOCKS_PER_PLANE; b++)
 		{
 			savefile<<"Block " << b << " : " << block_use[b] << "\n";
 		}
@@ -343,7 +343,7 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 	    }
 	}
 
-	if(WEAR_LEVEL_LOG)
+	if(cfg.WEAR_LEVEL_LOG)
 	{
 	    savefile<<"\nWrite Frequency Data: \n";
 	    savefile<<"========================\n";
@@ -357,13 +357,13 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"\nPower Data: \n";
 	savefile<<"========================\n";
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    savefile<<"Package: "<<i<<"\n";
-	    savefile<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Accumulated Erase Energy: "<<(erase_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<" mJ\n\n";
+	    savefile<<"Accumulated Idle Energy: "<<(idle_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Access Energy: "<<(access_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Erase Energy: "<<(erase_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Total Energy: "<<(total_energy[i] * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n\n";
 	 
 	    savefile<<"Average Idle Power: "<<ave_idle_power[i]<<" mW\n";
 	    savefile<<"Average Access Power: "<<ave_access_power[i]<<" mW\n";
@@ -375,7 +375,7 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 
 	savefile.close();
 
-	if(USE_EPOCHS && !RUNTIME_WRITE)
+	if(USE_EPOCHS && !cfg.RUNTIME_WRITE)
 	{
 	    list<EpochEntry>::iterator it;
 	    for (it = epoch_queue.begin(); it != epoch_queue.end(); it++)
@@ -388,20 +388,20 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 void GCLogger::print(uint64_t cycle) {
 	// Power stuff
 	// Total power used
-	vector<double> total_energy = vector<double>(NUM_PACKAGES, 0.0); 
+	vector<double> total_energy = vector<double>(cfg.NUM_PACKAGES, 0.0); 
 	
         // Average power used
-	vector<double> ave_idle_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> ave_access_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> ave_erase_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> average_power = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> ave_idle_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> ave_access_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> ave_erase_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> average_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
-	  total_energy[i] = (idle_energy[i] + access_energy[i] + erase_energy[i]) * VCC;
-	  ave_idle_power[i] = (idle_energy[i] * VCC) / cycle;
-	  ave_access_power[i] = (access_energy[i] * VCC) / cycle;
-	  ave_erase_power[i] = (erase_energy[i] * VCC) / cycle;	  
+	  total_energy[i] = (idle_energy[i] + access_energy[i] + erase_energy[i]) * cfg.VCC;
+	  ave_idle_power[i] = (idle_energy[i] * cfg.VCC) / cycle;
+	  ave_access_power[i] = (access_energy[i] * cfg.VCC) / cycle;
+	  ave_erase_power[i] = (erase_energy[i] * cfg.VCC) / cycle;	  
 	  average_power[i] = total_energy[i] / cycle;
 	}
 
@@ -412,14 +412,14 @@ void GCLogger::print(uint64_t cycle) {
 	cout<<"\nPower Data: \n";
 	cout<<"========================\n";
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    cout<<"Package: "<<i<<"\n";
-	    cout<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
-	    cout<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
-	    cout<<"Accumulated Erase Energy: "<<(erase_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
+	    cout<<"Accumulated Idle Energy: "<<(idle_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<"mJ\n";
+	    cout<<"Accumulated Access Energy: "<<(access_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<"mJ\n";
+	    cout<<"Accumulated Erase Energy: "<<(erase_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<"mJ\n";
 	    
-	    cout<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<"mJ\n\n";
+	    cout<<"Total Energy: "<<(total_energy[i] * (cfg.CYCLE_TIME * 0.000000001))<<"mJ\n\n";
 	 
 	    cout<<"Average Idle Power: "<<ave_idle_power[i]<<"mW\n";
 	    cout<<"Average Access Power: "<<ave_access_power[i]<<"mW\n";
@@ -431,8 +431,8 @@ void GCLogger::print(uint64_t cycle) {
 
 vector<vector<double> > GCLogger::getEnergyData(void)
 {
-    vector<vector<double> > temp = vector<vector<double> >(3, vector<double>(NUM_PACKAGES, 0.0));
-    for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+    vector<vector<double> > temp = vector<vector<double> >(3, vector<double>(cfg.NUM_PACKAGES, 0.0));
+    for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
     {
 	temp[0][i] = idle_energy[i];
 	temp[1][i] = access_energy[i];
@@ -443,7 +443,7 @@ vector<vector<double> > GCLogger::getEnergyData(void)
 
 void GCLogger::save_epoch(uint64_t cycle, uint64_t epoch)
 {    
-    EpochEntry this_epoch;
+	EpochEntry this_epoch;
     this_epoch.cycle = cycle;
     this_epoch.epoch = epoch;
 
@@ -475,6 +475,7 @@ void GCLogger::save_epoch(uint64_t cycle, uint64_t epoch)
 
     this_epoch.writes_per_address = writes_per_address;
     
+    this_epoch.ctrl_queue_length = vector<vector<uint64_t> >(cfg.NUM_PACKAGES, vector<uint64_t>(cfg.DIES_PER_PACKAGE, 0));
     for(uint64_t i = 0; i < ctrl_queue_length.size(); i++)
     {
 	for(uint64_t j = 0; j < ctrl_queue_length[i].size(); j++)
@@ -483,10 +484,14 @@ void GCLogger::save_epoch(uint64_t cycle, uint64_t epoch)
 	}
     }
 
-    for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+    this_epoch.idle_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
+    this_epoch.access_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
+    this_epoch.erase_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
+    for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
     {	
 	this_epoch.idle_energy[i] = idle_energy[i]; 
 	this_epoch.access_energy[i] = access_energy[i]; 
+	this_epoch.erase_energy[i] = erase_energy[i]; 
     }
 
     EpochEntry temp_epoch;
@@ -520,7 +525,7 @@ void GCLogger::save_epoch(uint64_t cycle, uint64_t epoch)
 	this_epoch.average_gcwrite_latency -= last_epoch.average_gcwrite_latency;
 	this_epoch.average_queue_latency -= last_epoch.average_queue_latency;
     
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{	
 	    this_epoch.idle_energy[i] -= last_epoch.idle_energy[i]; 
 	    this_epoch.access_energy[i] -= last_epoch.access_energy[i]; 
@@ -528,7 +533,7 @@ void GCLogger::save_epoch(uint64_t cycle, uint64_t epoch)
 	}
     }
 
-    if(RUNTIME_WRITE)
+    if(cfg.RUNTIME_WRITE)
     {
 	write_epoch(&this_epoch);
     }
@@ -542,21 +547,21 @@ void GCLogger::save_epoch(uint64_t cycle, uint64_t epoch)
 
 void GCLogger::write_epoch(EpochEntry *e)
 {
-    	if(e->epoch == 0 && RUNTIME_WRITE)
+    	if(e->epoch == 0 && cfg.RUNTIME_WRITE)
 	{
-	    string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+	    string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 	    const char * command = command_str.c_str();
 	    int sys_done = system(command);
 	    if (sys_done != 0)
 	    {
 		WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 	    }
-	    savefile.open(LOG_DIR+"NVDIMM_EPOCH.log", ios_base::out | ios_base::trunc);
+	    savefile.open(cfg.LOG_DIR+"NVDIMM_EPOCH.log", ios_base::out | ios_base::trunc);
 	    savefile<<"NVDIMM_EPOCH Log \n";
 	}
 	else
 	{
-	    savefile.open(LOG_DIR+"NVDIMM_EPOCH.log", ios_base::out | ios_base::app);
+	    savefile.open(cfg.LOG_DIR+"NVDIMM_EPOCH.log", ios_base::out | ios_base::app);
 	}
 
 	if (!savefile) 
@@ -567,22 +572,22 @@ void GCLogger::write_epoch(EpochEntry *e)
 	
 	// Power stuff
 	// Total power used
-	vector<double> total_energy = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> total_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
 	
         // Average power used
-	vector<double> ave_idle_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> ave_access_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> ave_erase_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> average_power = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> ave_idle_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> ave_access_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> ave_erase_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> average_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    if(e->cycle != 0)
 	    {
-		total_energy[i] = (e->idle_energy[i] + e->access_energy[i] + e->erase_energy[i]) * VCC;
-		ave_idle_power[i] = (e->idle_energy[i] * VCC) / e->cycle;
-		ave_access_power[i] = (e->access_energy[i] * VCC) / e->cycle;
-		ave_erase_power[i] = (e->erase_energy[i] * VCC) / e->cycle;	  
+		total_energy[i] = (e->idle_energy[i] + e->access_energy[i] + e->erase_energy[i]) * cfg.VCC;
+		ave_idle_power[i] = (e->idle_energy[i] * cfg.VCC) / e->cycle;
+		ave_access_power[i] = (e->access_energy[i] * cfg.VCC) / e->cycle;
+		ave_erase_power[i] = (e->erase_energy[i] * cfg.VCC) / e->cycle;	  
 		average_power[i] = total_energy[i] / e->cycle;
 	    }
 	    else
@@ -616,17 +621,17 @@ void GCLogger::write_epoch(EpochEntry *e)
 	savefile<<"\nThroughput and Latency Data: \n";
 	savefile<<"========================\n";
 	savefile<<"Average Read Latency: " <<(divide((float)e->average_read_latency,(float)e->num_reads))<<" cycles";
-	savefile<<" (" <<(divide((float)e->average_read_latency,(float)e->num_reads)*CYCLE_TIME)<<" ns)\n";
+	savefile<<" (" <<(divide((float)e->average_read_latency,(float)e->num_reads)*cfg.CYCLE_TIME)<<" ns)\n";
 	savefile<<"Average Write Latency: " <<divide((float)e->average_write_latency,(float)e->num_writes)<<" cycles";
-	savefile<<" (" <<(divide((float)e->average_write_latency,(float)e->num_writes))*CYCLE_TIME<<" ns)\n";	
+	savefile<<" (" <<(divide((float)e->average_write_latency,(float)e->num_writes))*cfg.CYCLE_TIME<<" ns)\n";	
 	savefile<<"Average Erase Latency: " <<divide((float)e->average_erase_latency,(float)e->num_erases)<<" cycles";
-	savefile<<" (" <<(divide((float)e->average_erase_latency,(float)e->num_erases))*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<(divide((float)e->average_erase_latency,(float)e->num_erases))*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Average Garbage Collector initiated Read Latency: " <<divide((float)e->average_gcread_latency,(float)e->num_gcreads)<<" cycles";
-	savefile<<" (" <<divide((float)e->average_gcread_latency,(float)e->num_gcreads)*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<divide((float)e->average_gcread_latency,(float)e->num_gcreads)*cfg.CYCLE_TIME<<" ns)\n";
         savefile<<"Average Garbage Collector initiated Write Latency: " <<divide((float)e->average_gcwrite_latency,(float)e->num_gcwrites)<<" cycles";
-	savefile<<" (" <<divide((float)e->average_gcwrite_latency,(float)e->num_gcwrites)*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<divide((float)e->average_gcwrite_latency,(float)e->num_gcwrites)*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Average Queue Latency: " <<divide((float)e->average_queue_latency,(float)e->num_accesses)<<" cycles";
-	savefile<<" (" <<(divide((float)e->average_queue_latency,(float)e->num_accesses))*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<(divide((float)e->average_queue_latency,(float)e->num_accesses))*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Total Throughput: " <<this->calc_throughput(e->cycle, e->num_accesses)<<" KB/sec\n";
 	savefile<<"Read Throughput: " <<this->calc_throughput(e->cycle, e->num_reads)<<" KB/sec\n";
 	savefile<<"Write Throughput: " <<this->calc_throughput(e->cycle, e->num_writes)<<" KB/sec\n";
@@ -643,7 +648,7 @@ void GCLogger::write_epoch(EpochEntry *e)
 	    }
 	}
 
-	if(WEAR_LEVEL_LOG)
+	if(cfg.WEAR_LEVEL_LOG)
 	{
 	    savefile<<"\nWrite Frequency Data: \n";
 	    savefile<<"========================\n";
@@ -657,13 +662,13 @@ void GCLogger::write_epoch(EpochEntry *e)
 	savefile<<"\nPower Data: \n";
 	savefile<<"========================\n";
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    savefile<<"Package: "<<i<<"\n";
-	    savefile<<"Accumulated Idle Energy: "<<(e->idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Accumulated Access Energy: "<<(e->access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Accumulated Erase Energy: "<<(e->erase_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<" mJ\n\n";
+	    savefile<<"Accumulated Idle Energy: "<<(e->idle_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Access Energy: "<<(e->access_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Erase Energy: "<<(e->erase_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Total Energy: "<<(total_energy[i] * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n\n";
 	 
 	    savefile<<"Average Idle Power: "<<ave_idle_power[i]<<" mW\n";
 	    savefile<<"Average Access Power: "<<ave_access_power[i]<<" mW\n";

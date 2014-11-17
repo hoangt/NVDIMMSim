@@ -37,6 +37,7 @@
 //header file for the Package class
 
 #include "FlashConfiguration.h"
+#include "Init.h"
 #include "ChannelPacket.h"
 #include "Util.h"
 
@@ -51,7 +52,7 @@ namespace NVDSim{
 	class Buffer;
 	class Channel{
 		public:
-			Channel(uint64_t);
+			Channel(Configuration &nv_cfg, uint64_t);
 			void attachBuffer(Buffer *b);
 			void attachController(Controller *c);
 			int obtainChannel(uint64_t s, SenderType t, ChannelPacket *p);
@@ -74,7 +75,8 @@ namespace NVDSim{
 			
 			Controller *controller;
 
-			uint64_t id;
+			Configuration &cfg;
+			uint64_t id;			
 
 		private:
 			SenderType sType;

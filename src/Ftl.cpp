@@ -42,13 +42,16 @@
 using namespace NVDSim;
 using namespace std;
 
-Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
-	numBlocks = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * BLOCKS_PER_PLANE;
+Ftl::Ftl(Configuration &nv_cfg, Controller *c, Logger *l, NVDIMM *p) :
+	cfg(nv_cfg)
+{
+
+	numBlocks = cfg.NUM_PACKAGES * cfg.DIES_PER_PACKAGE * cfg.PLANES_PER_DIE * cfg.BLOCKS_PER_PLANE;
 	
 	// we need an extra page(block) for the gap in start gap
 	// we don't use the overprovisioning factor here cause start gap doesn't have a way to use
 	// the extra blocks
-	if(wearLevelingScheme == StartGap)
+	if(cfg.wearLevelingScheme == StartGap)
 	{
 	    numBlocks = numBlocks + 1;
 	}
@@ -62,10 +65,10 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 
 	addressMap = std::unordered_map<uint64_t, uint64_t>();
 
-	used = vector<vector<bool>>(numBlocks, vector<bool>(PAGES_PER_BLOCK, false));
+	used = vector<vector<bool>>(numBlocks, vector<bool>(cfg.PAGES_PER_BLOCK, false));
 	used_page_count = 0;
 
-	dirty = vector<vector<bool>>(numBlocks, vector<bool>(PAGES_PER_BLOCK, false));
+	dirty = vector<vector<bool>>(numBlocks, vector<bool>(cfg.PAGES_PER_BLOCK, false));
 	dirty_page_count = 0;
 
 	transQueue = list<FlashTransaction>();
@@ -94,19 +97,19 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 
 	// the maximum amount of time we can wait before we're sure we've deadlocked
 	// time it takes to read all of the pages in a block
-	deadlock_time = PAGES_PER_BLOCK * (READ_CYCLES + ((divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME) +
-					   ((divide_params_64b(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME));
+	deadlock_time = cfg.PAGES_PER_BLOCK * (READ_CYCLES + ((divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_WIDTH) * cfg.DEVICE_CYCLE) / cfg.CYCLE_TIME) +
+					   ((divide_params_64b(cfg.COMMAND_LENGTH,cfg.DEVICE_WIDTH) * cfg.DEVICE_CYCLE) / cfg.CYCLE_TIME));
 	// plus the time it takes to write all of the pages in a block
-	deadlock_time += PAGES_PER_BLOCK * (WRITE_CYCLES + ((divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME) +
-					   ((divide_params_64b(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME));
+	deadlock_time += cfg.PAGES_PER_BLOCK * (WRITE_CYCLES + ((divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_WIDTH) * cfg.DEVICE_CYCLE) / cfg.CYCLE_TIME) +
+					   ((divide_params_64b(cfg.COMMAND_LENGTH,cfg.DEVICE_WIDTH) * cfg.DEVICE_CYCLE) / cfg.CYCLE_TIME));
 	// plus the time it takes to erase the block
-	deadlock_time += ERASE_CYCLES + ((divide_params_64b(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE) / CYCLE_TIME);
+	deadlock_time += ERASE_CYCLES + ((divide_params_64b(cfg.COMMAND_LENGTH,cfg.DEVICE_WIDTH) * cfg.DEVICE_CYCLE) / cfg.CYCLE_TIME);
 
-	write_wait_count = DELAY_WRITE_CYCLES;
+	write_wait_count = cfg.DELAY_WRITE_CYCLES;
 
 	// start gap variables
 	start = 0;
-	gap = ((numBlocks * PAGES_PER_BLOCK)-1)*NV_PAGE_SIZE; // gap is a physical address
+	gap = ((numBlocks * cfg.PAGES_PER_BLOCK)-1)*cfg.NV_PAGE_SIZE; // gap is a physical address
 
 	pending_gap_read = false; // indicates that we're waiting on a read of the data from the new gap location
 	gap_read_delayed = false; // indicates that there was no room for the read and we will have to try again
@@ -118,11 +121,11 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 
 	// if randomized address space
 	// this effectively randomizes the pages but individual addresses will still need to be adjusted
-	if(wearLevelingScheme == StartGap && RANDOM_ADDR)
+	if(cfg.wearLevelingScheme == StartGap && cfg.RANDOM_ADDR)
 	{
-	    randomAddrs = vector<uint64_t>((numBlocks * PAGES_PER_BLOCK)-1);
+	    randomAddrs = vector<uint64_t>((numBlocks * cfg.PAGES_PER_BLOCK)-1);
 
-	    for(uint64_t i = 0; i < (numBlocks * PAGES_PER_BLOCK)-1; i++)
+	    for(uint64_t i = 0; i < (numBlocks * cfg.PAGES_PER_BLOCK)-1; i++)
 	    {
 		randomAddrs[i] = i; // fill vector with all of the addresses
 	    }
@@ -133,14 +136,14 @@ Ftl::Ftl(Controller *c, Logger *l, NVDIMM *p){
 
 	// get the bit lengths of various parts of the address for translating purposes
 	// unless we're doing addressing the old way and then whatever
-	if(addressScheme != Default)
+	if(cfg.addressScheme != Default)
 	{
-		channelBitWidth = nvdimm_log2(NUM_PACKAGES);
-		vaultBitWidth = nvdimm_log2(DIES_PER_PACKAGE);
-		bankBitWidth = nvdimm_log2(PLANES_PER_DIE);
-		rowBitWidth = nvdimm_log2(BLOCKS_PER_PLANE);
-		colBitWidth = nvdimm_log2(PAGES_PER_BLOCK);
-		colOffset = nvdimm_log2(NV_PAGE_SIZE);
+		channelBitWidth = nvdimm_log2(cfg.NUM_PACKAGES);
+		vaultBitWidth = nvdimm_log2(cfg.DIES_PER_PACKAGE);
+		bankBitWidth = nvdimm_log2(cfg.PLANES_PER_DIE);
+		rowBitWidth = nvdimm_log2(cfg.BLOCKS_PER_PLANE);
+		colBitWidth = nvdimm_log2(cfg.PAGES_PER_BLOCK);
+		colOffset = nvdimm_log2(cfg.NV_PAGE_SIZE);
 	}
 }
 
@@ -155,14 +158,14 @@ ChannelPacket *Ftl::translate(ChannelPacketType type, uint64_t vAddr, uint64_t p
 		exit(1);
 	}
 
-	if(wearLevelingScheme == DirectTranslation)
+	if(cfg.wearLevelingScheme == DirectTranslation)
 	{
 		uint64_t tempA, tempB;
 		//if we have a power of two of sections then we can just split on bits
-		if(nvdimm_check_power2(BLOCKS_PER_PLANE))
+		if(nvdimm_check_power2(cfg.BLOCKS_PER_PLANE))
 		{
 			// each sequence starts with the low order bits and works up to the high order bits
-			switch (addressScheme){
+			switch (cfg.addressScheme){
 			case ChannelVaultBankRowCol:
 				// need to clear out the zeroed bits below the access level
 				physicalAddress = physicalAddress >> colOffset;
@@ -338,57 +341,57 @@ ChannelPacket *Ftl::translate(ChannelPacketType type, uint64_t vAddr, uint64_t p
 				plane = tempA ^ tempB;			
 				break;
 			case Default:
-				physicalAddress /= NV_PAGE_SIZE;
-				page = physicalAddress % PAGES_PER_BLOCK;
-				physicalAddress /= PAGES_PER_BLOCK;
-				block = physicalAddress % BLOCKS_PER_PLANE;
-				physicalAddress /= BLOCKS_PER_PLANE;
-				plane = physicalAddress % PLANES_PER_DIE;
-				physicalAddress /= PLANES_PER_DIE;
-				die = physicalAddress % DIES_PER_PACKAGE;
-				physicalAddress /= DIES_PER_PACKAGE;
-				package = physicalAddress % NUM_PACKAGES;
+				physicalAddress /= cfg.NV_PAGE_SIZE;
+				page = physicalAddress % cfg.PAGES_PER_BLOCK;
+				physicalAddress /= cfg.PAGES_PER_BLOCK;
+				block = physicalAddress % cfg.BLOCKS_PER_PLANE;
+				physicalAddress /= cfg.BLOCKS_PER_PLANE;
+				plane = physicalAddress % cfg.PLANES_PER_DIE;
+				physicalAddress /= cfg.PLANES_PER_DIE;
+				die = physicalAddress % cfg.DIES_PER_PACKAGE;
+				physicalAddress /= cfg.DIES_PER_PACKAGE;
+				package = physicalAddress % cfg.NUM_PACKAGES;
 				break;
 			default:
-				physicalAddress /= NV_PAGE_SIZE;
-				page = physicalAddress % PAGES_PER_BLOCK;
-				physicalAddress /= PAGES_PER_BLOCK;
-				block = physicalAddress % BLOCKS_PER_PLANE;
-				physicalAddress /= BLOCKS_PER_PLANE;
-				plane = physicalAddress % PLANES_PER_DIE;
-				physicalAddress /= PLANES_PER_DIE;
-				die = physicalAddress % DIES_PER_PACKAGE;
-				physicalAddress /= DIES_PER_PACKAGE;
-				package = physicalAddress % NUM_PACKAGES;
+				physicalAddress /= cfg.NV_PAGE_SIZE;
+				page = physicalAddress % cfg.PAGES_PER_BLOCK;
+				physicalAddress /= cfg.PAGES_PER_BLOCK;
+				block = physicalAddress % cfg.BLOCKS_PER_PLANE;
+				physicalAddress /= cfg.BLOCKS_PER_PLANE;
+				plane = physicalAddress % cfg.PLANES_PER_DIE;
+				physicalAddress /= cfg.PLANES_PER_DIE;
+				die = physicalAddress % cfg.DIES_PER_PACKAGE;
+				physicalAddress /= cfg.DIES_PER_PACKAGE;
+				package = physicalAddress % cfg.NUM_PACKAGES;
 				break;
 			}
 		}
 		else
 		{
-			physicalAddress /= NV_PAGE_SIZE;
-			page = physicalAddress % PAGES_PER_BLOCK;
-			physicalAddress /= PAGES_PER_BLOCK;
-			block = physicalAddress % BLOCKS_PER_PLANE;
-			physicalAddress /= BLOCKS_PER_PLANE;
-			plane = physicalAddress % PLANES_PER_DIE;
-			physicalAddress /= PLANES_PER_DIE;
-			die = physicalAddress % DIES_PER_PACKAGE;
-			physicalAddress /= DIES_PER_PACKAGE;
-			package = physicalAddress % NUM_PACKAGES;
+			physicalAddress /= cfg.NV_PAGE_SIZE;
+			page = physicalAddress % cfg.PAGES_PER_BLOCK;
+			physicalAddress /= cfg.PAGES_PER_BLOCK;
+			block = physicalAddress % cfg.BLOCKS_PER_PLANE;
+			physicalAddress /= cfg.BLOCKS_PER_PLANE;
+			plane = physicalAddress % cfg.PLANES_PER_DIE;
+			physicalAddress /= cfg.PLANES_PER_DIE;
+			die = physicalAddress % cfg.DIES_PER_PACKAGE;
+			physicalAddress /= cfg.DIES_PER_PACKAGE;
+			package = physicalAddress % cfg.NUM_PACKAGES;
 		}
 	}
 	else
 	{
-		physicalAddress /= NV_PAGE_SIZE;
-		page = physicalAddress % PAGES_PER_BLOCK;
-		physicalAddress /= PAGES_PER_BLOCK;
-		block = physicalAddress % BLOCKS_PER_PLANE;
-		physicalAddress /= BLOCKS_PER_PLANE;
-		plane = physicalAddress % PLANES_PER_DIE;
-		physicalAddress /= PLANES_PER_DIE;
-		die = physicalAddress % DIES_PER_PACKAGE;
-		physicalAddress /= DIES_PER_PACKAGE;
-		package = physicalAddress % NUM_PACKAGES;
+		physicalAddress /= cfg.NV_PAGE_SIZE;
+		page = physicalAddress % cfg.PAGES_PER_BLOCK;
+		physicalAddress /= cfg.PAGES_PER_BLOCK;
+		block = physicalAddress % cfg.BLOCKS_PER_PLANE;
+		physicalAddress /= cfg.BLOCKS_PER_PLANE;
+		plane = physicalAddress % cfg.PLANES_PER_DIE;
+		physicalAddress /= cfg.PLANES_PER_DIE;
+		die = physicalAddress % cfg.DIES_PER_PACKAGE;
+		physicalAddress /= cfg.DIES_PER_PACKAGE;
+		package = physicalAddress % cfg.NUM_PACKAGES;
 	}
 
 	return new ChannelPacket(type, vAddr, pAddr, page, block, plane, die, package, NULL);
@@ -404,12 +407,12 @@ bool Ftl::attemptAdd(FlashTransaction &t, std::list<FlashTransaction> *queue, ui
     {
 	queue->push_back(t);
 	
-	if(LOGGING)
+	if(cfg.LOGGING)
 	{
 	    // Start the logging for this access.
 	    log->access_start(t.address, t.transactionType);
 	    log->ftlQueueLength(queue->size());
-	    if(QUEUE_EVENT_LOG)
+	    if(cfg.QUEUE_EVENT_LOG)
 	    {
 		log->log_ftl_queue_event(false, queue);
 	    }
@@ -446,7 +449,7 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 		}
 		if(!rw_conflict)
 		{
-		    if(LOGGING)
+		    if(cfg.LOGGING)
 		    {
 		        // access_process for that write is called here since its over now.
 		        log->access_process(t.address, t.address, 0, WRITE);
@@ -467,11 +470,11 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 	}
 	// if we erased the write that this write replaced then we should definitely
 	// always have room for this write
-	return attemptAdd(t, &transQueue, FTL_QUEUE_LENGTH);
+	return attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
     }
     else
     {
-	bool success =  attemptAdd(t, &transQueue, FTL_QUEUE_LENGTH);
+	bool success =  attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
 	if (success == true)
 	{
 	    if( transQueue.size() == 1)
@@ -490,14 +493,14 @@ bool Ftl::addTransaction(FlashTransaction &t){
     {
 	// we are going to favor reads over writes
 	// so writes get put into a special lower prioirty queue
-	if(FTL_QUEUE_HANDLING)
+	if(cfg.FTL_QUEUE_HANDLING)
 	{
 	    return checkQueueAddTransaction(t);
 	}
 	// no scheduling, so just shove everything into the read queue
 	else
 	{
-	    return attemptAdd(t, &transQueue, FTL_QUEUE_LENGTH);
+	    return attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
 	}
     }
     
@@ -527,7 +530,7 @@ void Ftl::update(void){
 			        case GC_DATA_READ:
 				{
 				    // only correct if this arrives while we're using start gap
-				    if(wearLevelingScheme == StartGap)
+				    if(cfg.wearLevelingScheme == StartGap)
 				    {
                                         // right now we just lock up on a gc read if it doesn't go through
 				        handle_read(true);
@@ -543,7 +546,7 @@ void Ftl::update(void){
 				case GC_DATA_WRITE:
 				{
 				    // only correct if this arrives while we're using start gap
-				    if(wearLevelingScheme == StartGap)
+				    if(cfg.wearLevelingScheme == StartGap)
 				    {
 					handle_write(true);
 					break;
@@ -636,14 +639,14 @@ void Ftl::handle_disk_read(bool gc)
 	used_page_count++;
 	addressMap[vAddr] = pAddr;
 	
-	if(wearLevelingScheme == RoundRobin)
+	if(cfg.wearLevelingScheme == RoundRobin)
 	{
 	    //update "write pointer"
-	    channel = (channel + 1) % NUM_PACKAGES;
+	    channel = (channel + 1) % cfg.NUM_PACKAGES;
 	    if (channel == 0){
-		die = (die + 1) % DIES_PER_PACKAGE;
+		die = (die + 1) % cfg.DIES_PER_PACKAGE;
 		if (die == 0)
-		    plane = (plane + 1) % PLANES_PER_DIE;
+		    plane = (plane + 1) % cfg.PLANES_PER_DIE;
 	    }
 	}
 	//=============================================================================
@@ -657,7 +660,7 @@ void Ftl::handle_disk_read(bool gc)
 	bool result = controller->addPacket(commandPacket);
 	if(result)
 	{
-	    if(LOGGING && !gc)
+	    if(cfg.LOGGING && !gc)
 	    {
 		// Update the logger (but not for GC_READ).
 		log->read_mapped();
@@ -690,7 +693,7 @@ void Ftl::handle_read(bool gc)
 	}
 	
 	// if we are disk reading then we want to map an unmapped read and treat is normally
-	if(DISK_READ)
+	if(cfg.DISK_READ)
 	{
 	    handle_disk_read(gc);
 	}
@@ -700,7 +703,7 @@ void Ftl::handle_read(bool gc)
 	    // If not, then this is an unmapped read.
 	    // We return a fake result immediately.
 	    // In the future, this could be an error message if we want.
-	    if(LOGGING)
+	    if(cfg.LOGGING)
 	    {
 		// Update the logger
 		log->read_unmapped();
@@ -732,7 +735,7 @@ void Ftl::handle_read(bool gc)
 	bool result = controller->addPacket(commandPacket);
 	if(result)
 	{
-	    if(LOGGING && !gc)
+	    if(cfg.LOGGING && !gc)
 	    {
 		// Update the logger (but not for GC_READ).
 		log->read_mapped();
@@ -761,11 +764,11 @@ void Ftl::write_used_handler(uint64_t vAddr)
 
     // we're going to write this data somewhere else for wear-leveling purposes however we will probably 
     // want to reuse this block for something at some later time so mark it as unused because it is
-    used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;   
+    used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / cfg.NV_PAGE_SIZE) % cfg.PAGES_PER_BLOCK] = false;   
     used_page_count--;
 
     // here we do mark the unused page as dirty so that we can know how long it will take to write to it
-    dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = true;
+    dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / cfg.NV_PAGE_SIZE) % cfg.PAGES_PER_BLOCK] = true;
     dirty_page_count ++;
     
     //cout << "USING FTL's WRITE_USED_HANDLER!!!\n";
@@ -789,7 +792,7 @@ void Ftl::write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t 
     // we've updated the write counter so now its safe to reset the gap movement bool
     gap_moved = false;
 
-    if (LOGGING && !gc)
+    if (cfg.LOGGING && !gc)
     {
 	if (mapped)
 	    log->write_mapped();
@@ -803,11 +806,11 @@ void Ftl::write_success(uint64_t block, uint64_t page, uint64_t vAddr, uint64_t 
 
 write_location Ftl::next_write_location(uint64_t vAddr)
 {
-    if(wearLevelingScheme == StartGap)
+    if(cfg.wearLevelingScheme == StartGap)
     {
 		return start_gap_write_location(vAddr);
     }
-	else if(wearLevelingScheme == DirectTranslation)
+	else if(cfg.wearLevelingScheme == DirectTranslation)
 	{
 		// in direct translation, we just use the vAddr as the pAddr
 		return direct_write_location(vAddr);
@@ -824,7 +827,7 @@ write_location Ftl::direct_write_location(uint64_t vAddr)
 
 	loc.address = vAddr;
 	loc.block = vAddr / BLOCK_SIZE;
-	loc.page = (vAddr / NV_PAGE_SIZE) % PAGES_PER_BLOCK;
+	loc.page = (vAddr / cfg.NV_PAGE_SIZE) % cfg.PAGES_PER_BLOCK;
     loc.done = true;
 
     return loc;
@@ -839,18 +842,18 @@ write_location Ftl::round_robin_write_location(uint64_t vAddr)
     write_location loc;
 
     //look for first free physical page starting at the write pointer
-    addr_start = BLOCKS_PER_PLANE * (plane + PLANES_PER_DIE * (die + DIES_PER_PACKAGE * channel));
+    addr_start = cfg.BLOCKS_PER_PLANE * (plane + cfg.PLANES_PER_DIE * (die + cfg.DIES_PER_PACKAGE * channel));
 	    
     // Search from the current write pointer to the end of the flash for a free page.
     for (block = addr_start ; block < TOTAL_SIZE / BLOCK_SIZE && !done; block++)
     {
-	for (page = 0 ; page < PAGES_PER_BLOCK  && !done ; page++)
+	for (page = 0 ; page < cfg.PAGES_PER_BLOCK  && !done ; page++)
 	{
 	    if (!used[block][page] && !dirty[block][page])
 	    {
 		tmp_block = block;
 		tmp_page = page;
-		pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
+		pAddr = (block * BLOCK_SIZE + page * cfg.NV_PAGE_SIZE);
 		done = true;
 	    }
 	}
@@ -864,13 +867,13 @@ write_location Ftl::round_robin_write_location(uint64_t vAddr)
     {							
 	for (block = 0 ; block < start / BLOCK_SIZE && !done; block++)
 	{
-	    for (page = 0 ; page < PAGES_PER_BLOCK  && !done; page++)
+	    for (page = 0 ; page < cfg.PAGES_PER_BLOCK  && !done; page++)
 	    {
 		if (!used[block][page] && !dirty[block][page])
 		{
 		    tmp_block = block;
 		    tmp_page = page;
-		    pAddr = (block * BLOCK_SIZE + page * NV_PAGE_SIZE);
+		    pAddr = (block * BLOCK_SIZE + page * cfg.NV_PAGE_SIZE);
 		    done = true;
 		}
 	    }
@@ -891,16 +894,16 @@ void Ftl::gap_rotate(void)
 {
     if(gap == 0)
     {
-	gap = ((numBlocks * PAGES_PER_BLOCK)-1)*NV_PAGE_SIZE;
-	start = start + NV_PAGE_SIZE;
-	if(start >= (numBlocks * PAGES_PER_BLOCK)-1)
+	gap = ((numBlocks * cfg.PAGES_PER_BLOCK)-1)*cfg.NV_PAGE_SIZE;
+	start = start + cfg.NV_PAGE_SIZE;
+	if(start >= (numBlocks * cfg.PAGES_PER_BLOCK)-1)
 	{
 	    start = 0;
 	}
     }
     else
     {
-	gap = gap - NV_PAGE_SIZE;
+	gap = gap - cfg.NV_PAGE_SIZE;
     }
 
     gap_moving = false;
@@ -921,16 +924,16 @@ void Ftl::gap_movement(void)
 	// if the gap has reached the top of the physical memory, it must be moved
 	// back to the end, so we need to read whatever data is now at the end so
 	// we can eventually copy it into the old gap location
-	vAddr = (((numBlocks * PAGES_PER_BLOCK)-1)*NV_PAGE_SIZE)-start;
-	vAddr = vAddr - NV_PAGE_SIZE; // because the vAddr will always be greater than the gap here
+	vAddr = (((numBlocks * cfg.PAGES_PER_BLOCK)-1)*cfg.NV_PAGE_SIZE)-start;
+	vAddr = vAddr - cfg.NV_PAGE_SIZE; // because the vAddr will always be greater than the gap here
     }
     else
     {
 	// if the gap is somewhere in the middle of the address space then we need to
 	// read the data that is at the next gap location
-	vAddr = gap-start-NV_PAGE_SIZE; // vAddr = [GAP-1] (from Start Gap paper)
+	vAddr = gap-start-cfg.NV_PAGE_SIZE; // vAddr = [GAP-1] (from Start Gap paper)
 	if(vAddr >= gap)
-	    vAddr = vAddr-NV_PAGE_SIZE;
+	    vAddr = vAddr-cfg.NV_PAGE_SIZE;
     }
 
     // Check to see if the vAddr exists in the address map.
@@ -948,7 +951,7 @@ void Ftl::gap_movement(void)
 	commandPacket = Ftl::translate(GC_READ, vAddr, addressMap[vAddr]);
 
 	// log this new thing
-	if(LOGGING)
+	if(cfg.LOGGING)
 	{
 	    // Start the logging for this access.
 	    log->access_start(vAddr, GC_DATA_READ);
@@ -997,7 +1000,7 @@ void Ftl::handle_gap_write(uint64_t write_vAddr)
     else if (queue_open)
     {
 	// log this new thing
-	if(LOGGING)
+	if(cfg.LOGGING)
 	{
 	    // Start the logging for this access.
 	    log->access_start(write_vAddr, GC_DATA_WRITE);
@@ -1018,13 +1021,13 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
     write_location loc;
 
     // if address space randomization is being used
-    if(RANDOM_ADDR)
+    if(cfg.RANDOM_ADDR)
     {
 	// have to get the contiguous page number for this vAddr
-	uint64_t page_num = vAddr/NV_PAGE_SIZE;
-	uint64_t offset = vAddr%NV_PAGE_SIZE;
+	uint64_t page_num = vAddr/cfg.NV_PAGE_SIZE;
+	uint64_t offset = vAddr%cfg.NV_PAGE_SIZE;
 	iAddr = randomAddrs[page_num]; // get our random address for this virtual address
-	iAddr = iAddr * NV_PAGE_SIZE;
+	iAddr = iAddr * cfg.NV_PAGE_SIZE;
 	iAddr = iAddr + offset;
     }
     else
@@ -1033,7 +1036,7 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
     }
 
     // if its time to adjust the gap then do so if we're not already taking care of it
-    if(write_counter != 0 && write_counter%GAP_WRITE_INTERVAL == 0 && !gap_moving && !gap_moved)
+    if(write_counter != 0 && write_counter%cfg.GAP_WRITE_INTERVAL == 0 && !gap_moving && !gap_moved)
     {
 	gap_moving = true;
 	// start the gap movement process
@@ -1044,15 +1047,15 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
     // this will use the old gap placement while gap movement is taking place as the start
     // and gap values are only updated once the data has been safely moved from the new
     // gap location
-    pAddr = (iAddr + start) % (((numBlocks * PAGES_PER_BLOCK)-1)*NV_PAGE_SIZE);
+    pAddr = (iAddr + start) % (((numBlocks * cfg.PAGES_PER_BLOCK)-1)*cfg.NV_PAGE_SIZE);
     if(pAddr >= gap)
     {
-	pAddr = pAddr + NV_PAGE_SIZE;
+	pAddr = pAddr + cfg.NV_PAGE_SIZE;
     }
 
     loc.address = pAddr;
     loc.block = pAddr / BLOCK_SIZE;
-    loc.page = (pAddr / NV_PAGE_SIZE) % PAGES_PER_BLOCK;
+    loc.page = (pAddr / cfg.NV_PAGE_SIZE) % cfg.PAGES_PER_BLOCK;
     loc.done = true;
     return loc;
 }
@@ -1071,11 +1074,11 @@ void Ftl::handle_write(bool gc)
 
     if (addressMap.find(vAddr) != addressMap.end())
     {
-	if(wearLevelingScheme == DirectTranslation)
+	if(cfg.wearLevelingScheme == DirectTranslation)
 	{
 	    pAddr = addressMap[vAddr];	
 	    block = pAddr / BLOCK_SIZE;
-	    page = (pAddr / NV_PAGE_SIZE) % PAGES_PER_BLOCK;
+	    page = (pAddr / cfg.NV_PAGE_SIZE) % cfg.PAGES_PER_BLOCK;
 	    done = true;
 	}
 	else
@@ -1086,7 +1089,7 @@ void Ftl::handle_write(bool gc)
     }
 
     // find the next location for this write
-    if (mapped == false || wearLevelingScheme != DirectTranslation)
+    if (mapped == false || cfg.wearLevelingScheme != DirectTranslation)
     {
 	// calling the appropriate next location scheme
         loc = next_write_location(vAddr);
@@ -1119,7 +1122,7 @@ void Ftl::handle_write(bool gc)
 	ChannelPacketType write_type;
 	// if this page is dirty and there is no garbage collection, we must issue an erase instead of a write
 	// this should only occur with PCM as NAND and NOR will have to use GC
-	if (!GARBAGE_COLLECT && dirty[block][page])
+	if (!cfg.GARBAGE_COLLECT && dirty[block][page])
 	    write_type = SET_WRITE;
 	else if (gc)
 	    write_type = GC_WRITE;
@@ -1155,14 +1158,14 @@ void Ftl::handle_write(bool gc)
 	    write_success(block, page, vAddr, pAddr, gc, mapped);
 	    
 	    // if we are using the real write pointer, then update it
-	    if(itr_count == 0 && wearLevelingScheme == RoundRobin)
+	    if(itr_count == 0 && cfg.wearLevelingScheme == RoundRobin)
 	    {
 		//update "write pointer"
-		channel = (channel + 1) % NUM_PACKAGES;
+		channel = (channel + 1) % cfg.NUM_PACKAGES;
 		if (channel == 0){
-		    die = (die + 1) % DIES_PER_PACKAGE;
+		    die = (die + 1) % cfg.DIES_PER_PACKAGE;
 		    if (die == 0)
-			plane = (plane + 1) % PLANES_PER_DIE;
+			plane = (plane + 1) % cfg.PLANES_PER_DIE;
 		}
 	    }
 	}
@@ -1171,8 +1174,8 @@ void Ftl::handle_write(bool gc)
 
 uint64_t Ftl::get_ptr(void) {
 	// Return a pointer to the current plane.
-	return NV_PAGE_SIZE * PAGES_PER_BLOCK * BLOCKS_PER_PLANE * 
-		(plane + PLANES_PER_DIE * (die + NUM_PACKAGES * channel));
+	return cfg.NV_PAGE_SIZE * cfg.PAGES_PER_BLOCK * cfg.BLOCKS_PER_PLANE * 
+		(plane + cfg.PLANES_PER_DIE * (die + cfg.NUM_PACKAGES * channel));
 }
 
 void Ftl::handle_trim(void)
@@ -1183,11 +1186,11 @@ void Ftl::handle_trim(void)
 	if(addressMap.find(vAddr) != addressMap.end())
 	{
 	    // this page has been identified as no longer in use, so mark it as such
-	    used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
+	    used[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / cfg.NV_PAGE_SIZE) % cfg.PAGES_PER_BLOCK] = false;
 
 	    // however the data on this page is still present so it is now dirty
 	    // here we do mark the unused page as dirty so that we can know how long it will take to write to it
-	    dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = true;
+	    dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / cfg.NV_PAGE_SIZE) % cfg.PAGES_PER_BLOCK] = true;
 	    dirty_page_count++;
 	}
 
@@ -1216,7 +1219,7 @@ void Ftl::handle_preset(void)
 	    if(result)
 	    {
 		// this page is no longer dirty because we have erased it now
-		dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = false;
+		dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / cfg.NV_PAGE_SIZE) % cfg.PAGES_PER_BLOCK] = false;
 		dirty_page_count--;
 		
 		// Pop the transaction from the transaction queue.
@@ -1246,7 +1249,7 @@ void Ftl::handle_preset(void)
 void Ftl::popFrontTransaction()
 {
 	transQueue.pop_front();
-	if(LOGGING && QUEUE_EVENT_LOG)
+	if(cfg.LOGGING && cfg.QUEUE_EVENT_LOG)
 	{
 	    log->log_ftl_queue_event(false, &transQueue);
 	}
@@ -1254,7 +1257,7 @@ void Ftl::popFrontTransaction()
 
 void Ftl::powerCallback(void) 
 {
-    if(LOGGING)
+    if(cfg.LOGGING)
     {
 	vector<vector<double> > temp = log->getEnergyData();
 	if(temp.size() == 2)
@@ -1278,7 +1281,7 @@ void Ftl::powerCallback(void)
 
 void Ftl::sendQueueLength(void)
 {
-	if(LOGGING == true)
+	if(cfg.LOGGING == true)
 	{
 		log->ftlQueueLength(transQueue.size());
 	}
@@ -1287,13 +1290,13 @@ void Ftl::sendQueueLength(void)
 // function to set the NVM as more dirty as if it'd been running for a long time
 void Ftl::preDirty(void)
 {
-    if(PERCENT_FULL > 0 && !dirtied)
+    if(cfg.PERCENT_FULL > 0 && !dirtied)
     {
 	// use virtual blocks here so we don't deadlock the entire NVM
-	uint numBlocks = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * VIRTUAL_BLOCKS_PER_PLANE;
+	uint numBlocks = cfg.NUM_PACKAGES * cfg.DIES_PER_PACKAGE * cfg.PLANES_PER_DIE * cfg.VIRTUAL_BLOCKS_PER_PLANE;
 	for(uint64_t i = 0; i < numBlocks; i++)
 	{
-	    for(uint64_t j = 0; j < (PAGES_PER_BLOCK*(PERCENT_FULL/100)); j++)
+	    for(uint64_t j = 0; j < (cfg.PAGES_PER_BLOCK*(cfg.PERCENT_FULL/100)); j++)
 	    {
 		dirty[i][j] = true;
 		dirty_page_count++;
@@ -1307,13 +1310,13 @@ void Ftl::preDirty(void)
 }
 void Ftl::saveNVState(void)
 {
-     if(ENABLE_NV_SAVE && !saved)
+     if(cfg.ENABLE_NV_SAVE && !saved)
     {
 	ofstream save_file;
-	save_file.open(NV_SAVE_FILE, ios_base::out | ios_base::trunc);
+	save_file.open(cfg.NV_SAVE_FILE, ios_base::out | ios_base::trunc);
 	if(!save_file)
 	{
-	    cout << "ERROR: Could not open NVDIMM state save file: " << NV_SAVE_FILE << "\n";
+	    cout << "ERROR: Could not open NVDIMM state save file: " << cfg.NV_SAVE_FILE << "\n";
 	    abort();
 	}
 	
@@ -1358,17 +1361,17 @@ void Ftl::saveNVState(void)
 
 void Ftl::loadNVState(void)
 {
-    if(ENABLE_NV_RESTORE && !loaded)
+    if(cfg.ENABLE_NV_RESTORE && !loaded)
     {
 	ifstream restore_file;
-	restore_file.open(NV_RESTORE_FILE);
+	restore_file.open(cfg.NV_RESTORE_FILE);
 	if(!restore_file)
 	{
-	    cout << "ERROR: Could not open NVDIMM restore file: " << NV_RESTORE_FILE << "\n";
+	    cout << "ERROR: Could not open NVDIMM restore file: " << cfg.NV_RESTORE_FILE << "\n";
 	    abort();
 	}
 
-	cout << "NVDIMM is restoring the system from file " << NV_RESTORE_FILE <<"\n";
+	cout << "NVDIMM is restoring the system from file " << cfg.NV_RESTORE_FILE <<"\n";
 
 	// restore the data
 	uint64_t doing_used = 0;
@@ -1426,7 +1429,7 @@ void Ftl::loadNVState(void)
                 // this page was used need to issue fake write
 		if(temp.compare("1") == 0 && dirty[row][column] != 1)
 		{
-		    pAddr = (row * BLOCK_SIZE + column * NV_PAGE_SIZE);
+		    pAddr = (row * BLOCK_SIZE + column * cfg.NV_PAGE_SIZE);
 		    vAddr = tempMap[pAddr];
 		    ChannelPacket *tempPacket = Ftl::translate(FAST_WRITE, vAddr, pAddr);
 		    controller->writeToPackage(tempPacket);
@@ -1435,7 +1438,7 @@ void Ftl::loadNVState(void)
 		}		
 
 		column++;
-		if(column >= PAGES_PER_BLOCK)
+		if(column >= cfg.PAGES_PER_BLOCK)
 		{
 		    row++;
 		    column = 0;
@@ -1446,7 +1449,7 @@ void Ftl::loadNVState(void)
 	    {
 		dirty[row][column] = convert_uint64_t(temp);
 		column++;
-		if(column >= PAGES_PER_BLOCK)
+		if(column >= cfg.PAGES_PER_BLOCK)
 		{
 		    row++;
 		    column = 0;
@@ -1502,7 +1505,7 @@ void Ftl::queuesNotFull(void)
 // once the read is done, we create a write for that data and send it
 void Ftl::GCReadDone(uint64_t vAddr)
 {   
-    if(wearLevelingScheme == StartGap && pending_gap_read)
+    if(cfg.wearLevelingScheme == StartGap && pending_gap_read)
     {
 	pending_gap_read = false;
 	gap_write_vAddr = vAddr;

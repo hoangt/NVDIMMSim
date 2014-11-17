@@ -38,6 +38,7 @@
 
 #include "SimObj.h"
 #include "FlashConfiguration.h"
+#include "Init.h"
 #include "Die.h"
 #include "Buffer.h"
 #include "Ftl.h"
@@ -59,7 +60,7 @@ namespace NVDSim{
 	class NVDIMM;
 	class Controller : public SimObj{
 		public:
-	                Controller(NVDIMM* parent, Logger* l);
+	                Controller(Configuration &nv_cfg, NVDIMM* parent, Logger* l);
 
 			void attachPackages(vector<Package> *packages);
 			void attachFrontBuffer(FrontBuffer *fb);
@@ -101,6 +102,7 @@ namespace NVDSim{
 			// for fast forwarding
 			void writeToPackage(ChannelPacket *packet);
 
+			Configuration &cfg;
 			NVDIMM *parentNVDIMM;
 			Logger *log;
 			FrontBuffer *front_buffer;

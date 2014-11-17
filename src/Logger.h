@@ -44,6 +44,7 @@
 
 #include "SimObj.h"
 #include "FlashConfiguration.h"
+#include "Init.h"
 #include "ChannelPacket.h"
 #include "FlashTransaction.h"
 
@@ -62,7 +63,7 @@ namespace NVDSim
     class Logger: public SimObj
     {
     public:
-	Logger();
+	Logger(Configuration &nv_cfg);
 
 	// extended logging options
 	void log_ftl_queue_event(bool write, std::list<FlashTransaction> *queue);
@@ -129,6 +130,7 @@ namespace NVDSim
 	virtual void save_epoch(uint64_t cycle, uint64_t epoch);
 	
 	// State
+	Configuration &cfg;
 	std::ofstream savefile;
 
 	uint64_t num_accesses;
@@ -261,45 +263,6 @@ namespace NVDSim
 
 	    std::vector<double> idle_energy;
 	    std::vector<double> access_energy;
-
-	    EpochEntry()
-	    {
-		cycle = 0;
-		epoch = 0;
-
-		num_accesses = 0;
-		num_reads = 0;
-		num_writes = 0;
-		
-		num_row_hits = 0;
-	
-		num_unmapped = 0;
-		num_mapped = 0;
-
-		num_read_unmapped = 0;
-		num_read_mapped = 0;
-		num_write_unmapped = 0;
-		num_write_mapped = 0;
-
-		num_read_refresh_blocked = 0;
-		num_write_refresh_blocked = 0;
-		
-		average_read_refresh_delay = 0;
-		average_write_refresh_delay = 0;
-		
-		average_refresh_delay = 0;
-
-		average_latency = 0;
-		average_read_latency = 0;
-		average_write_latency = 0;
-		average_queue_latency = 0;
-		
-		ftl_queue_length = 0;
-		ctrl_queue_length = std::vector<std::vector<uint64_t> >(NUM_PACKAGES, std::vector<uint64_t>(DIES_PER_PACKAGE, 0));
-	
-		idle_energy = std::vector<double>(NUM_PACKAGES, 0.0); 
-		access_energy = std::vector<double>(NUM_PACKAGES, 0.0);
-	    }
 	};
 
 	// Store system snapshot from last epoch to compute this epoch

@@ -40,21 +40,25 @@
 
 using namespace NVDSim;
 
-Controller::Controller(NVDIMM* parent, Logger* l){
+Controller::Controller(Configuration &nv_cfg, NVDIMM* parent, Logger* l) :
+	cfg(nv_cfg)
+{
+
+	cfg = nv_cfg;
 	parentNVDIMM = parent;
 	log = l;
 
-	channelBeatsLeft = vector<uint64_t>(NUM_PACKAGES, 0);
+	channelBeatsLeft = vector<uint64_t>(cfg.NUM_PACKAGES, 0);
 
-	readQueues = vector<vector<list <ChannelPacket *> > >(NUM_PACKAGES, vector<list<ChannelPacket *> >(DIES_PER_PACKAGE, list<ChannelPacket * >()));
-	writeQueues = vector<vector<list <ChannelPacket *> > >(NUM_PACKAGES, vector<list<ChannelPacket *> >(DIES_PER_PACKAGE, list<ChannelPacket * >()));
-	outgoingPackets = vector<ChannelPacket *>(NUM_PACKAGES, 0);
+	readQueues = vector<vector<list <ChannelPacket *> > >(cfg.NUM_PACKAGES, vector<list<ChannelPacket *> >(cfg.DIES_PER_PACKAGE, list<ChannelPacket * >()));
+	writeQueues = vector<vector<list <ChannelPacket *> > >(cfg.NUM_PACKAGES, vector<list<ChannelPacket *> >(cfg.DIES_PER_PACKAGE, list<ChannelPacket * >()));
+	outgoingPackets = vector<ChannelPacket *>(cfg.NUM_PACKAGES, 0);
 
-	pendingPackets = vector<list <ChannelPacket *> >(NUM_PACKAGES, list<ChannelPacket *>());
+	pendingPackets = vector<list <ChannelPacket *> >(cfg.NUM_PACKAGES, list<ChannelPacket *>());
 
-	paused = new bool [NUM_PACKAGES];
-	die_pointers = new uint64_t [NUM_PACKAGES];
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	paused = new bool [cfg.NUM_PACKAGES];
+	die_pointers = new uint64_t [cfg.NUM_PACKAGES];
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    paused[i] = false;
 	    die_pointers[i] = 0;
@@ -66,40 +70,40 @@ Controller::Controller(NVDIMM* parent, Logger* l){
 
 	REFRESH_CTRL_PERIOD = 0;
 
-	if(REFRESH_ENABLE)
+	if(cfg.REFRESH_ENABLE)
 	{
 		// TO DO: Make sure that this math is valid with non-Flash-like hierarchies
 		// refreshing all the banks on a channel simultaneously so we don't have
 		// to issue as many refreshes
-		if(refreshLevel == PerChannel)
+		if(cfg.refreshLevel == PerChannel)
 		{
-			REFRESH_CTRL_PERIOD = REFRESH_PERIOD / (PAGES_PER_BLOCK * BLOCKS_PER_PLANE);
+			REFRESH_CTRL_PERIOD = cfg.REFRESH_PERIOD / (cfg.PAGES_PER_BLOCK * cfg.BLOCKS_PER_PLANE);
 		}
-		else if(refreshLevel == PerVault)
+		else if(cfg.refreshLevel == PerVault)
 		{
-			REFRESH_CTRL_PERIOD = REFRESH_PERIOD / (PAGES_PER_BLOCK * BLOCKS_PER_PLANE * PLANES_PER_DIE);
+			REFRESH_CTRL_PERIOD = cfg.REFRESH_PERIOD / (cfg.PAGES_PER_BLOCK * cfg.BLOCKS_PER_PLANE * cfg.PLANES_PER_DIE);
 		}
 		// per bank default
 		else
 		{
-			REFRESH_CTRL_PERIOD = REFRESH_PERIOD / (PAGES_PER_BLOCK * BLOCKS_PER_PLANE * PLANES_PER_DIE * DIES_PER_PACKAGE);
+			REFRESH_CTRL_PERIOD = cfg.REFRESH_PERIOD / (cfg.PAGES_PER_BLOCK * cfg.BLOCKS_PER_PLANE * cfg.PLANES_PER_DIE * cfg.DIES_PER_PACKAGE);
 		}
-		cout << "Refresh level is: " << refreshLevel << "\n";
+		cout << "Refresh level is: " << cfg.refreshLevel << "\n";
 		cout << "Refresh control period is: " << REFRESH_CTRL_PERIOD << "\n";
 		// staggering the refresh countdowns similar to how DRAMSim2 does it
 		stringstream scs;
 		uint64_t adjusted_refresh_period;
-		scs << ((REFRESH_CTRL_PERIOD)/NUM_PACKAGES);
+		scs << ((REFRESH_CTRL_PERIOD)/cfg.NUM_PACKAGES);
 		scs >> adjusted_refresh_period;
 		cout << adjusted_refresh_period;
 
-		for (uint64_t i=0; i < NUM_PACKAGES; i++)
+		for (uint64_t i=0; i < cfg.NUM_PACKAGES; i++)
 		{	
 			uint64_t temp_refresh = adjusted_refresh_period*(i+1);
 			refreshCountdown.push_back((uint) (temp_refresh));
 		}
 
-		refreshing = vector<vector<bool> >(NUM_PACKAGES, vector<bool>(DIES_PER_PACKAGE, 0));
+		refreshing = vector<vector<bool> >(cfg.NUM_PACKAGES, vector<bool>(cfg.DIES_PER_PACKAGE, 0));
 	}
 }
 
@@ -134,15 +138,15 @@ void Controller::returnCritLine(ChannelPacket *busPacket){
 void Controller::returnPowerData(vector<double> idle_energy, vector<double> access_energy, vector<double> erase_energy,
 		vector<double> vpp_idle_energy, vector<double> vpp_access_energy, vector<double> vpp_erase_energy) {
 	if(parentNVDIMM->ReturnPowerData!=NULL){
-		vector<vector<double>> power_data = vector<vector<double>>(6, vector<double>(NUM_PACKAGES, 0.0));
-		for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+		vector<vector<double>> power_data = vector<vector<double>>(6, vector<double>(cfg.NUM_PACKAGES, 0.0));
+		for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 		{
-			power_data[0][i] = idle_energy[i] * VCC;
-			power_data[1][i] = access_energy[i] * VCC;
-			power_data[2][i] = erase_energy[i] * VCC;
-			power_data[3][i] = vpp_idle_energy[i] * VPP;
-			power_data[4][i] = vpp_access_energy[i] * VPP;
-			power_data[5][i] = vpp_erase_energy[i] * VPP;
+			power_data[0][i] = idle_energy[i] * cfg.VCC;
+			power_data[1][i] = access_energy[i] * cfg.VCC;
+			power_data[2][i] = erase_energy[i] * cfg.VCC;
+			power_data[3][i] = vpp_idle_energy[i] * cfg.VPP;
+			power_data[4][i] = vpp_access_energy[i] * cfg.VPP;
+			power_data[5][i] = vpp_erase_energy[i] * cfg.VPP;
 		}
 		(*parentNVDIMM->ReturnPowerData)(parentNVDIMM->systemID, power_data, currentClockCycle, false);
 	}
@@ -151,13 +155,13 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 void Controller::returnPowerData(vector<double> idle_energy, vector<double> access_energy, vector<double> vpp_idle_energy,
 		vector<double> vpp_access_energy) {
 	if(parentNVDIMM->ReturnPowerData!=NULL){
-		vector<vector<double>> power_data = vector<vector<double>>(4, vector<double>(NUM_PACKAGES, 0.0));
-		for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+		vector<vector<double>> power_data = vector<vector<double>>(4, vector<double>(cfg.NUM_PACKAGES, 0.0));
+		for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 		{
-			power_data[0][i] = idle_energy[i] * VCC;
-			power_data[1][i] = access_energy[i] * VCC;
-			power_data[2][i] = vpp_idle_energy[i] * VPP;
-			power_data[3][i] = vpp_access_energy[i] * VPP;
+			power_data[0][i] = idle_energy[i] * cfg.VCC;
+			power_data[1][i] = access_energy[i] * cfg.VCC;
+			power_data[2][i] = vpp_idle_energy[i] * cfg.VPP;
+			power_data[3][i] = vpp_access_energy[i] * cfg.VPP;
 		}
 		(*parentNVDIMM->ReturnPowerData)(parentNVDIMM->systemID, power_data, currentClockCycle, false);
 	}
@@ -165,12 +169,12 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 
 void Controller::returnPowerData(vector<double> idle_energy, vector<double> access_energy, vector<double> erase_energy) {
 	if(parentNVDIMM->ReturnPowerData!=NULL){
-		vector<vector<double>> power_data = vector<vector<double>>(3, vector<double>(NUM_PACKAGES, 0.0));
-		for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+		vector<vector<double>> power_data = vector<vector<double>>(3, vector<double>(cfg.NUM_PACKAGES, 0.0));
+		for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 		{
-			power_data[0][i] = idle_energy[i] * VCC;
-			power_data[1][i] = access_energy[i] * VCC;
-			power_data[2][i] = erase_energy[i] * VCC;
+			power_data[0][i] = idle_energy[i] * cfg.VCC;
+			power_data[1][i] = access_energy[i] * cfg.VCC;
+			power_data[2][i] = erase_energy[i] * cfg.VCC;
 		}
 		(*parentNVDIMM->ReturnPowerData)(parentNVDIMM->systemID, power_data, currentClockCycle, false);
 	}
@@ -178,11 +182,11 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 
 void Controller::returnPowerData(vector<double> idle_energy, vector<double> access_energy) {
 	if(parentNVDIMM->ReturnPowerData!=NULL){
-		vector<vector<double>> power_data = vector<vector<double>>(2, vector<double>(NUM_PACKAGES, 0.0));
-		for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+		vector<vector<double>> power_data = vector<vector<double>>(2, vector<double>(cfg.NUM_PACKAGES, 0.0));
+		for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 		{
-			power_data[0][i] = idle_energy[i] * VCC;
-			power_data[1][i] = access_energy[i] * VCC;
+			power_data[0][i] = idle_energy[i] * cfg.VCC;
+			power_data[1][i] = access_energy[i] * cfg.VCC;
 		}
 		(*parentNVDIMM->ReturnPowerData)(parentNVDIMM->systemID, power_data, currentClockCycle, false);
 	}
@@ -190,7 +194,7 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 
 void Controller::receiveFromChannel(ChannelPacket *busPacket){
 	// READ is now done. Log it and call delete
-	if(LOGGING == true)
+	if(cfg.LOGGING == true)
 	{
 		log->access_stop(busPacket->virtualAddress, busPacket->physicalAddress);
 	}
@@ -217,16 +221,16 @@ void Controller::receiveFromChannel(ChannelPacket *busPacket){
 // this is only called on a write as the name suggests
 bool Controller::checkQueueWrite(ChannelPacket *p)
 {
-    if(SCHEDULE)
+    if(cfg.SCHEDULE)
     {
-	if ((writeQueues[p->package][p->die].size() + 1 < CTRL_WRITE_QUEUE_LENGTH) || (CTRL_WRITE_QUEUE_LENGTH == 0))
+	if ((writeQueues[p->package][p->die].size() + 1 < cfg.CTRL_WRITE_QUEUE_LENGTH) || (cfg.CTRL_WRITE_QUEUE_LENGTH == 0))
 	    return true;
 	else
 	    return false;
     }
     else
     {
-	if ((readQueues[p->package][p->die].size() + 1 < CTRL_READ_QUEUE_LENGTH) || (CTRL_READ_QUEUE_LENGTH == 0))
+	if ((readQueues[p->package][p->die].size() + 1 < cfg.CTRL_READ_QUEUE_LENGTH) || (cfg.CTRL_READ_QUEUE_LENGTH == 0))
 	    return true;
 	else
 	    return false;
@@ -234,7 +238,7 @@ bool Controller::checkQueueWrite(ChannelPacket *p)
 }
 
 bool Controller::addPacket(ChannelPacket *p){
-    if(SCHEDULE)
+    if(cfg.SCHEDULE)
     {
 	// If there is not room in the command queue for this packet, then return false.
 	// If CTRL_QUEUE_LENGTH is 0, then infinite queues are allowed.
@@ -242,7 +246,7 @@ bool Controller::addPacket(ChannelPacket *p){
 	{
 	case READ:
         case ERASE:
-	    if ((readQueues[p->package][p->die].size() < CTRL_READ_QUEUE_LENGTH) || (CTRL_READ_QUEUE_LENGTH == 0))
+	    if ((readQueues[p->package][p->die].size() < cfg.CTRL_READ_QUEUE_LENGTH) || (cfg.CTRL_READ_QUEUE_LENGTH == 0))
 		readQueues[p->package][p->die].push_back(p);
 	    else	
 	        return false;
@@ -251,7 +255,7 @@ bool Controller::addPacket(ChannelPacket *p){
 	case SET_WRITE:
 	case PRESET_WRITE:
         case DATA:
-	     if ((writeQueues[p->package][p->die].size() < CTRL_WRITE_QUEUE_LENGTH) || (CTRL_WRITE_QUEUE_LENGTH == 0))
+	     if ((writeQueues[p->package][p->die].size() < cfg.CTRL_WRITE_QUEUE_LENGTH) || (cfg.CTRL_WRITE_QUEUE_LENGTH == 0))
 		 writeQueues[p->package][p->die].push_back(p);
 	     else
 	         return false;
@@ -259,7 +263,7 @@ bool Controller::addPacket(ChannelPacket *p){
 	case GC_READ:
 	case GC_WRITE:
 	    // Try to push the gc stuff to the front of the read queue in order to give them priority
-	    if ((readQueues[p->package][p->die].size() < CTRL_READ_QUEUE_LENGTH) || (CTRL_READ_QUEUE_LENGTH == 0))
+	    if ((readQueues[p->package][p->die].size() < cfg.CTRL_READ_QUEUE_LENGTH) || (cfg.CTRL_READ_QUEUE_LENGTH == 0))
 		readQueues[p->package][p->die].push_front(p);	
 	    else
 		return false;
@@ -269,7 +273,7 @@ bool Controller::addPacket(ChannelPacket *p){
 	    break;
 	}
     
-	if(LOGGING && QUEUE_EVENT_LOG)
+	if(cfg.LOGGING && cfg.QUEUE_EVENT_LOG)
 	{
 	    switch (p->busPacketType)
 	    {
@@ -296,14 +300,14 @@ bool Controller::addPacket(ChannelPacket *p){
     // Not scheduling so everything goes to the read queue
     else
     {
-	if ((readQueues[p->package][p->die].size() < CTRL_READ_QUEUE_LENGTH) || (CTRL_READ_QUEUE_LENGTH == 0))
+	if ((readQueues[p->package][p->die].size() < cfg.CTRL_READ_QUEUE_LENGTH) || (cfg.CTRL_READ_QUEUE_LENGTH == 0))
 	{
 	    readQueues[p->package][p->die].push_back(p);
     
-	    if(LOGGING)
+	    if(cfg.LOGGING)
 	    {
 		log->ctrlQueueSingleLength(p->package, p->die, readQueues[p->package][p->die].size());
-		if(QUEUE_EVENT_LOG)
+		if(cfg.QUEUE_EVENT_LOG)
 		{
 		    log->log_ctrl_queue_event(false, p->package, &readQueues[p->package][p->die]);
 		}
@@ -319,7 +323,7 @@ bool Controller::addPacket(ChannelPacket *p){
 
 bool Controller::readdPacket(ChannelPacket *p)
 {
-    if(SCHEDULE)
+    if(cfg.SCHEDULE)
     {
 	// If there is not room in the command queue for this packet, then return false.
 	// If CTRL_QUEUE_LENGTH is 0, then infinite queues are allowed.
@@ -329,7 +333,7 @@ bool Controller::readdPacket(ChannelPacket *p)
 	case SET_WRITE:
 	case PRESET_WRITE:
         case DATA:
-	     if ((writeQueues[p->package][p->die].size() < CTRL_WRITE_QUEUE_LENGTH) || (CTRL_WRITE_QUEUE_LENGTH == 0))
+	     if ((writeQueues[p->package][p->die].size() < cfg.CTRL_WRITE_QUEUE_LENGTH) || (cfg.CTRL_WRITE_QUEUE_LENGTH == 0))
 	     {
 		 list<ChannelPacket *>::iterator it;
 		 it = writeQueues[p->package][p->die].begin();
@@ -348,7 +352,7 @@ bool Controller::readdPacket(ChannelPacket *p)
     // Not scheduling so everything goes to the read queue
     else
     {
-	if ((readQueues[p->package][p->die].size() < CTRL_READ_QUEUE_LENGTH) || (CTRL_READ_QUEUE_LENGTH == 0))
+	if ((readQueues[p->package][p->die].size() < cfg.CTRL_READ_QUEUE_LENGTH) || (cfg.CTRL_READ_QUEUE_LENGTH == 0))
 	{
 	    list<ChannelPacket *>::iterator it;
 	    it = readQueues[p->package][p->die].begin();
@@ -368,13 +372,13 @@ bool Controller::readdPacket(ChannelPacket *p)
 bool Controller::nextDie(uint64_t package)
 {
     die_pointers[package]++;
-    if (die_pointers[package] >= DIES_PER_PACKAGE)
+    if (die_pointers[package] >= cfg.DIES_PER_PACKAGE)
     {
 	die_pointers[package] = 0;
     }
     die_counter++;
     // if we loop the number of dies, then we're done
-    if (die_counter >= DIES_PER_PACKAGE)
+    if (die_counter >= cfg.DIES_PER_PACKAGE)
     {
 	return 1;
     }
@@ -383,11 +387,11 @@ bool Controller::nextDie(uint64_t package)
 
 void Controller::update(void){    
     // schedule the next operation for each die
-    if(SCHEDULE)
+    if(cfg.SCHEDULE)
     {
 		uint64_t i;	
 		//loop through the channels to find a packet for each
-		for (i = 0; i < NUM_PACKAGES; i++)
+		for (i = 0; i < cfg.NUM_PACKAGES; i++)
 		{
 			// loop through the dies per package to find the packet
 			die_counter = 0;
@@ -395,13 +399,13 @@ void Controller::update(void){
 			while (!done)
 			{
 				// do we need to issue an emergency write
-				if((WRITE_ON_QUEUE_SIZE == true && writeQueues[i][die_pointers[i]].size() >= WRITE_QUEUE_LIMIT))
+				if((cfg.WRITE_ON_QUEUE_SIZE == true && writeQueues[i][die_pointers[i]].size() >= cfg.WRITE_QUEUE_LIMIT))
 				{
 					if (!writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
 						//if we can get the channel
 						if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, writeQueues[i][die_pointers[i]].front())){
 							outgoingPackets[i] = writeQueues[i][die_pointers[i]].front();
-							if(LOGGING && QUEUE_EVENT_LOG)
+							if(cfg.LOGGING && cfg.QUEUE_EVENT_LOG)
 							{
 								log->log_ctrl_queue_event(true, writeQueues[i][die_pointers[i]].front()->package, &writeQueues[i][die_pointers[i]]);
 							}
@@ -410,17 +414,17 @@ void Controller::update(void){
 							
 							switch (outgoingPackets[i]->busPacketType){
 							case DATA:
-								// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
-								channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
+								// Note: cfg.NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
+								channelBeatsLeft[i] = divide_params((cfg.NV_PAGE_SIZE*8),cfg.CHANNEL_WIDTH); 
 								break;
 							default:
-								channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+								channelBeatsLeft[i] = divide_params(cfg.COMMAND_LENGTH,cfg.CHANNEL_WIDTH);
 								break;
 							}
 							// managed to place something so we're done with this channel
 							// advance the die pointer since this die is now busy
 							die_pointers[i]++;
-							if (die_pointers[i] >= DIES_PER_PACKAGE)
+							if (die_pointers[i] >= cfg.DIES_PER_PACKAGE)
 							{
 								die_pointers[i] = 0;
 							}
@@ -445,18 +449,18 @@ void Controller::update(void){
 					//if we can get the channel
 					if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, readQueues[i][die_pointers[i]].front())){
 						outgoingPackets[i] = readQueues[i][die_pointers[i]].front();
-						if(LOGGING && QUEUE_EVENT_LOG)
+						if(cfg.LOGGING && cfg.QUEUE_EVENT_LOG)
 						{
 							log->log_ctrl_queue_event(false, readQueues[i][die_pointers[i]].front()->package, &readQueues[i][die_pointers[i]]);
 						}
 						readQueues[i][die_pointers[i]].pop_front();
 						parentNVDIMM->queuesNotFull();
 						
-						channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+						channelBeatsLeft[i] = divide_params(cfg.COMMAND_LENGTH,cfg.CHANNEL_WIDTH);
 						// managed to place something so we're done with this channel
 						// advance the die pointer since this die is now busy
 						die_pointers[i]++;
-						if (die_pointers[i] >= DIES_PER_PACKAGE)
+						if (die_pointers[i] >= cfg.DIES_PER_PACKAGE)
 						{
 							die_pointers[i] = 0;
 						}
@@ -469,18 +473,18 @@ void Controller::update(void){
 					}
 				}
 				// if there are no reads to send see if we're allowed to send a write instead
-				else if (IDLE_WRITE == true && !writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
+				else if (cfg.IDLE_WRITE == true && !writeQueues[i][die_pointers[i]].empty() && outgoingPackets[i]==NULL){
 					//if we can get the channel
 					if ((*packages)[i].channel->obtainChannel(0, CONTROLLER, writeQueues[i][die_pointers[i]].front())){
 						outgoingPackets[i] = writeQueues[i][die_pointers[i]].front();
-						if(LOGGING && QUEUE_EVENT_LOG)
+						if(cfg.LOGGING && cfg.QUEUE_EVENT_LOG)
 						{
 							log->log_ctrl_queue_event(true, writeQueues[i][die_pointers[i]].front()->package, &writeQueues[i][die_pointers[i]]);
 						}
 						writeQueues[i][die_pointers[i]].pop_front();
 						// successfully issued the write so increment the die pointer
 						die_pointers[i]++;
-						if (die_pointers[i] >= DIES_PER_PACKAGE)
+						if (die_pointers[i] >= cfg.DIES_PER_PACKAGE)
 						{
 							die_pointers[i] = 0;
 						}
@@ -488,17 +492,17 @@ void Controller::update(void){
 						
 						switch (outgoingPackets[i]->busPacketType){
 						case DATA:
-							// Note: NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
-							channelBeatsLeft[i] = divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
+							// Note: cfg.NV_PAGE_SIZE is multiplied by 8 since the parameter is given in bytes and we need it in bits.
+							channelBeatsLeft[i] = divide_params((cfg.NV_PAGE_SIZE*8),cfg.CHANNEL_WIDTH); 
 							break;
 						default:
-							channelBeatsLeft[i] = divide_params(COMMAND_LENGTH,CHANNEL_WIDTH);
+							channelBeatsLeft[i] = divide_params(cfg.COMMAND_LENGTH,cfg.CHANNEL_WIDTH);
 							break;
 						}
 						// managed to place something so we're done with this channel
 						// advance the die pointer since this die is now busy
 						die_pointers[i]++;
-						if (die_pointers[i] >= DIES_PER_PACKAGE)
+						if (die_pointers[i] >= cfg.DIES_PER_PACKAGE)
 						{
 							die_pointers[i] = 0;
 						}
@@ -523,16 +527,16 @@ void Controller::update(void){
     {
 		uint64_t i;	
 		//Look through queues and send oldest packets to the appropriate channel
-		for (i = 0; i < NUM_PACKAGES; i++){
+		for (i = 0; i < cfg.NUM_PACKAGES; i++){
 			// loop through the dies per package to find the packet
 			die_counter = 0;
 			done = 0;
 			Channel* channel_pointer;
-			if ((!readQueues[i][die_pointers[i]].empty() || (REFRESH_ENABLE && refreshCountdown[i] <= 0)) && outgoingPackets[i]==NULL)
+			if ((!readQueues[i][die_pointers[i]].empty() || (cfg.REFRESH_ENABLE && refreshCountdown[i] <= 0)) && outgoingPackets[i]==NULL)
 			{
 				// check the status of the die
 				// ***** This is the write cancelation and write pausing stuff ************************************************************************************
-				if((WRITE_PAUSING || WRITE_CANCELATION) && !readQueues[i][die_pointers[i]].empty())
+				if((cfg.WRITE_PAUSING || cfg.WRITE_CANCELATION) && !readQueues[i][die_pointers[i]].empty())
 				{
 					writePausingCancelation(i);
 				}
@@ -540,7 +544,7 @@ void Controller::update(void){
 				// if we are simulating refreshes and its time to issue an autorefresh to this
 				// die, then do so
 				ChannelPacket *potentialPacket;
-				if(REFRESH_ENABLE && refreshCountdown[i] <= 0)
+				if(cfg.REFRESH_ENABLE && refreshCountdown[i] <= 0)
 				{
 					if(!readQueues[i][die_pointers[i]].empty())
 					{
@@ -568,7 +572,7 @@ void Controller::update(void){
 
 
 				
-				if(DEVICE_DATA_CHANNEL && potentialPacket->busPacketType == DATA)
+				if(cfg.DEVICE_DATA_CHANNEL && potentialPacket->busPacketType == DATA)
 				{
 					channel_pointer = (*packages)[i].data_channel;
 				}
@@ -577,8 +581,6 @@ void Controller::update(void){
 					channel_pointer = (*packages)[i].channel;
 				}
 
-
-				bool channel_busy = false; // for logging purposes
 				// repeat refresh so don't do anything
 				if(!potentialPacket->busPacketType == AUTO_REFRESH || (allDiesRefreshReady(i) && outgoingPackets[i] == NULL))
 				{
@@ -587,7 +589,7 @@ void Controller::update(void){
 					// can't be used
 					if (channel_pointer->obtainChannel(0, CONTROLLER, potentialPacket)){
 						
-						if(LOGGING && QUEUE_EVENT_LOG)
+						if(cfg.LOGGING && cfg.QUEUE_EVENT_LOG)
 						{
 							switch (potentialPacket->busPacketType)
 							{
@@ -612,7 +614,7 @@ void Controller::update(void){
 						}
 						
 						outgoingPackets[i] = potentialPacket;
-						if(REFRESH_ENABLE && potentialPacket->busPacketType == AUTO_REFRESH)
+						if(cfg.REFRESH_ENABLE && potentialPacket->busPacketType == AUTO_REFRESH)
 						{
 							refreshCountdown[i] = REFRESH_CTRL_PERIOD;
 						}
@@ -622,24 +624,24 @@ void Controller::update(void){
 							parentNVDIMM->queuesNotFull();
 						}
 							
-						if(BUFFERED)
+						if(cfg.BUFFERED)
 						{
 							switch (outgoingPackets[i]->busPacketType){
 							case DATA:
-								// Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
+								// Note: cfg.NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
 								// are in 1 KB (1024 * 8).
-								if(DEVICE_DATA_CHANNEL)
+								if(cfg.DEVICE_DATA_CHANNEL)
 								{
 									// don't have to adjust the beats because the controller is updating every channel cycle
-									channelBeatsLeft[i] = divide_params_64b((NV_PAGE_SIZE*8),DEVICE_DATA_WIDTH); 
+									channelBeatsLeft[i] = divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_DATA_WIDTH); 
 								}
 								else
 								{
-									channelBeatsLeft[i] = divide_params_64b((NV_PAGE_SIZE*8),CHANNEL_WIDTH); 
+									channelBeatsLeft[i] = divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.CHANNEL_WIDTH); 
 								}
 								break;
 							default:
-								channelBeatsLeft[i] = divide_params_64b(COMMAND_LENGTH,CHANNEL_WIDTH);
+								channelBeatsLeft[i] = divide_params_64b(cfg.COMMAND_LENGTH,cfg.CHANNEL_WIDTH);
 								break;
 							}							
 						}
@@ -648,25 +650,25 @@ void Controller::update(void){
 						{
 							switch (outgoingPackets[i]->busPacketType){
 							case DATA:
-								// Note: NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
+								// Note: cfg.NV_PAGE_SIZE is multiplied by 8192 since the parameter is given in KB and this is how many bits
 								// are in 1 KB (1024 * 8).
-								if(DEVICE_DATA_CHANNEL)
+								if(cfg.DEVICE_DATA_CHANNEL)
 								{
 									// the controller cannot send data to the die faster than the die can receive
-									channelBeatsLeft[i] = divide_params_64b(divide_params_64b((NV_PAGE_SIZE*8),DEVICE_DATA_WIDTH) * DEVICE_CYCLE, CYCLE_TIME); 
+									channelBeatsLeft[i] = divide_params_64b(divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_DATA_WIDTH) * cfg.DEVICE_CYCLE, cfg.CYCLE_TIME); 
 								}
 								else
 								{
-									channelBeatsLeft[i] = divide_params_64b(divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE, CYCLE_TIME); 
+									channelBeatsLeft[i] = divide_params_64b(divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_WIDTH) * cfg.DEVICE_CYCLE, cfg.CYCLE_TIME); 
 								}
 								break;
 							default:
-								channelBeatsLeft[i] = divide_params_64b(divide_params_64b(COMMAND_LENGTH,DEVICE_WIDTH) * DEVICE_CYCLE, CYCLE_TIME);
+								channelBeatsLeft[i] = divide_params_64b(divide_params_64b(cfg.COMMAND_LENGTH,cfg.DEVICE_WIDTH) * cfg.DEVICE_CYCLE, cfg.CYCLE_TIME);
 								break;
 							}
 							
 							//DRAM chip bus turn around delay
-							if(CHANNEL_TURN_ENABLE && !channel_pointer->lastOwner(CONTROLLER))
+							if(cfg.CHANNEL_TURN_ENABLE && !channel_pointer->lastOwner(CONTROLLER))
 							{
 								channelBeatsLeft[i] += CHANNEL_TURN_CYCLES;
 							}							
@@ -674,7 +676,7 @@ void Controller::update(void){
 						// managed to place something so we're done with this channel
 						// advance the die pointer since this die is now busy
 						die_pointers[i]++;
-						if (die_pointers[i] >= DIES_PER_PACKAGE)
+						if (die_pointers[i] >= cfg.DIES_PER_PACKAGE)
 						{
 							die_pointers[i] = 0;
 						}
@@ -698,7 +700,6 @@ void Controller::update(void){
 						{
 							delete potentialPacket;
 						}
-						channel_busy = true;
 						done = nextDie(i);
 					}
 				}
@@ -723,7 +724,7 @@ void Controller::update(void){
 	
 	
     //Use the buffer code for the NVDIMMS to calculate the actual transfer time
-    if(BUFFERED)
+    if(cfg.BUFFERED)
     {	
 	uint64_t i;
 	//Check for commands/data on a channel. If there is, see if it is done on channel
@@ -743,7 +744,7 @@ void Controller::update(void){
 			pendingPackets[i].push_back(outgoingPackets[i]);
 			outgoingPackets[i] = NULL;
 		    }else if ((*packages)[outgoingPackets[i]->package].channel->notBusy()){
-			    if(CUT_THROUGH)
+			    if(cfg.CUT_THROUGH)
 			    {
 				    if(!(*packages)[outgoingPackets[i]->package].channel->isBufferFull(CONTROLLER, outgoingPackets[i]->busPacketType, 
 												       outgoingPackets[i]->die))
@@ -760,8 +761,8 @@ void Controller::update(void){
 			    }
 			    else
 			    {
-				if((outgoingPackets[i]->busPacketType == DATA && channelBeatsLeft[i] == divide_params((NV_PAGE_SIZE*8),CHANNEL_WIDTH)) ||
-				   (outgoingPackets[i]->busPacketType != DATA && channelBeatsLeft[i] == divide_params(COMMAND_LENGTH,CHANNEL_WIDTH)))
+				if((outgoingPackets[i]->busPacketType == DATA && channelBeatsLeft[i] == divide_params((cfg.NV_PAGE_SIZE*8),cfg.CHANNEL_WIDTH)) ||
+				   (outgoingPackets[i]->busPacketType != DATA && channelBeatsLeft[i] == divide_params(cfg.COMMAND_LENGTH,cfg.CHANNEL_WIDTH)))
 				{
 				    if(!(*packages)[outgoingPackets[i]->package].channel->isBufferFull(CONTROLLER, outgoingPackets[i]->busPacketType, 
 												       outgoingPackets[i]->die))
@@ -791,7 +792,7 @@ void Controller::update(void){
     }
     else
     {
-	// BUFFERED NOT TRUE CASE...
+	// cfg.BUFFERED NOT TRUE CASE...
 	uint64_t i;
 	Channel* channel_pointer;
 	//Check for commands/data on a channel. If there is, see if it is done on channel
@@ -799,7 +800,7 @@ void Controller::update(void){
 	{
 		if (outgoingPackets[i] != NULL)
 		{
-			if(DEVICE_DATA_CHANNEL && outgoingPackets[i]->busPacketType == DATA)
+			if(cfg.DEVICE_DATA_CHANNEL && outgoingPackets[i]->busPacketType == DATA)
 			{
 				channel_pointer = (*packages)[outgoingPackets[i]->package].data_channel;
 			}
@@ -810,9 +811,9 @@ void Controller::update(void){
 			if (channel_pointer->hasChannel(CONTROLLER, 0)){
 				channelBeatsLeft[i]--;
 				if (channelBeatsLeft[i] == 0){
-					if(REFRESH_ENABLE && refreshLevel == PerChannel && outgoingPackets[i]->busPacketType == AUTO_REFRESH )
+					if(cfg.REFRESH_ENABLE && cfg.refreshLevel == PerChannel && outgoingPackets[i]->busPacketType == AUTO_REFRESH )
 					{
-						for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+						for(uint64_t d = 0; d < cfg.DIES_PER_PACKAGE; d++)
 						{
 							ChannelPacket *tempPacket = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, 0, d, outgoingPackets[i]->package, NULL);
 							channel_pointer->sendToBuffer(tempPacket);
@@ -833,7 +834,7 @@ void Controller::update(void){
 
     //See if any read data is ready to return
     while (!returnTransaction.empty()){
-	if(FRONT_BUFFER)
+	if(cfg.FRONT_BUFFER)
 	{
 	    // attempt to add the return transaction to the host channel buffer
 	    bool return_success = front_buffer->addTransaction(returnTransaction.back());
@@ -857,7 +858,7 @@ void Controller::update(void){
     }
 
 	//update the refresh counters
-	if(REFRESH_ENABLE)
+	if(cfg.REFRESH_ENABLE)
 	{
 		uint64_t i;
 		for (i = 0; i < refreshCountdown.size(); i++)
@@ -870,7 +871,6 @@ void Controller::update(void){
 
 void Controller::writePausingCancelation(uint64_t package)
 {
-	bool success = false; // used for write pausing and cancelation
 	int status = (*packages)[package].dies[die_pointers[package]]->isDieBusy(readQueues[package][die_pointers[package]].front()->plane);		   
 			
 	// if the die/plane is writing and we have a read waiting then see how far into this iteration		    
@@ -883,14 +883,14 @@ void Controller::writePausingCancelation(uint64_t package)
 			
 			//if we're far enough into a write iteration, then attempt a pause
 			// if this read is accessing the same block, then we need to cancel the write
-			if(writeIterationCyclesLeft < (WRITE_ITERATION_CYCLES/2) && (*packages)[package].dies[die_pointers[package]]->isCurrentBlock(readQueues[package][die_pointers[package]].front()->plane, readQueues[package][die_pointers[package]].front()->block) && WRITE_PAUSING)
+			if(writeIterationCyclesLeft < (cfg.WRITE_ITERATION_CYCLES/2) && (*packages)[package].dies[die_pointers[package]]->isCurrentBlock(readQueues[package][die_pointers[package]].front()->plane, readQueues[package][die_pointers[package]].front()->block) && cfg.WRITE_PAUSING)
 			{
-				success = (*packages)[package].dies[die_pointers[package]]->writePause(readQueues[package][die_pointers[package]].front()->plane);
+				(*packages)[package].dies[die_pointers[package]]->writePause(readQueues[package][die_pointers[package]].front()->plane);
 			}
 			// if we've still got a ways to go with this write or we're using the same block, go ahead and cancel it
-			else if(WRITE_CANCELATION)
+			else if(cfg.WRITE_CANCELATION)
 			{
-				success = (*packages)[package].dies[die_pointers[package]]->writeCancel(readQueues[package][die_pointers[package]].front()->plane);
+				(*packages)[package].dies[die_pointers[package]]->writeCancel(readQueues[package][die_pointers[package]].front()->plane);
 			}
 		}
 	}
@@ -898,18 +898,18 @@ void Controller::writePausingCancelation(uint64_t package)
 
 bool Controller::allDiesRefreshReady(uint64_t package)
 {
-	if(REFRESH_ENABLE)
+	if(cfg.REFRESH_ENABLE)
 	{
 		
-		if(refreshLevel == PerChannel)
+		if(cfg.refreshLevel == PerChannel)
 		{
 			uint64_t free_count = 0;
-			for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+			for(uint64_t d = 0; d < cfg.DIES_PER_PACKAGE; d++)
 			{
 				if((*packages)[package].channel->canDieRefresh(d))
 					free_count++;
 			}
-			if(free_count == DIES_PER_PACKAGE)
+			if(free_count == cfg.DIES_PER_PACKAGE)
 			{
 				return true;
 			}
@@ -920,7 +920,7 @@ bool Controller::allDiesRefreshReady(uint64_t package)
 				return false;
 			}
 		}
-		else if(refreshLevel == PerBank || refreshLevel == PerVault)
+		else if(cfg.refreshLevel == PerBank || cfg.refreshLevel == PerVault)
 		{
 			return true;
 		}
@@ -950,7 +950,7 @@ bool Controller::dataReady(uint64_t package, uint64_t die, uint64_t plane)
 
 void Controller::sendQueueLength(void)
 {
-    vector<vector<uint64_t> > temp = vector<vector<uint64_t> >(NUM_PACKAGES, vector<uint64_t>(DIES_PER_PACKAGE, 0));
+    vector<vector<uint64_t> > temp = vector<vector<uint64_t> >(cfg.NUM_PACKAGES, vector<uint64_t>(cfg.DIES_PER_PACKAGE, 0));
 	for(uint64_t i = 0; i < readQueues.size(); i++)
 	{
 	    for(uint64_t j = 0; j < readQueues[i].size(); j++)
@@ -958,7 +958,7 @@ void Controller::sendQueueLength(void)
 		temp[i][j] = writeQueues[i][j].size();
 	    }
 	}
-	if(LOGGING == true)
+	if(cfg.LOGGING == true)
 	{
 		log->ctrlQueueLength(temp);
 	}

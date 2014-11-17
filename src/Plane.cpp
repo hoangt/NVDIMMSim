@@ -40,7 +40,9 @@
 using namespace NVDSim;
 using namespace std;
 
-Plane::Plane(void){
+Plane::Plane(Configuration &nv_cfg) :
+	cfg(nv_cfg)
+{
 	dataReg= NULL;
 	cacheReg= NULL;
 }
@@ -71,10 +73,10 @@ void Plane::write(ChannelPacket *busPacket){
 
 	if(busPacket->busPacketType == FAST_WRITE)
 	{
-	    blocks[busPacket->block].write(busPacket->page, NULL);
+		blocks[busPacket->block].write(cfg.GARBAGE_COLLECT, busPacket->page, NULL);
 	}
 	// if we're interleaving
-	else if(RW_INTERLEAVE_ENABLE)
+	else if(cfg.RW_INTERLEAVE_ENABLE)
 	{
 		// move the data from the cacheReg to the dataReg for input into the flash array
 		// safety first...
@@ -94,7 +96,7 @@ void Plane::write(ChannelPacket *busPacket){
 
 void Plane::writeDone(ChannelPacket *busPacket)
 {
-    blocks[busPacket->block].write(busPacket->page, dataReg->data);
+	blocks[busPacket->block].write(cfg.GARBAGE_COLLECT, busPacket->page, dataReg->data);
 	    
     // The data packet is now done being used, so it can be deleted.
     dataReg = NULL;
@@ -111,11 +113,11 @@ void Plane::erase(ChannelPacket *busPacket){
 
 
 void Plane::storeInData(ChannelPacket *busPacket){
-    if(RW_INTERLEAVE_ENABLE && cacheReg == NULL)
+    if(cfg.RW_INTERLEAVE_ENABLE && cacheReg == NULL)
     {
 	    cacheReg= busPacket;
     }
-    else if(!RW_INTERLEAVE_ENABLE && dataReg == NULL)
+    else if(!cfg.RW_INTERLEAVE_ENABLE && dataReg == NULL)
     {
 	    dataReg = busPacket;
     }
@@ -128,7 +130,7 @@ void Plane::storeInData(ChannelPacket *busPacket){
 }
 
 ChannelPacket *Plane::readFromData(void){
-    if(RW_INTERLEAVE_ENABLE && cacheReg == NULL && dataReg != NULL)
+    if(cfg.RW_INTERLEAVE_ENABLE && cacheReg == NULL && dataReg != NULL)
     {
 	//cout << "read data from the cacheReg \n";
 	cacheReg = dataReg;
@@ -164,7 +166,7 @@ bool Plane::checkDataReg(void)
 void Plane::dataGone(void)
 {
     // read no longer needs this register
-	if(RW_INTERLEAVE_ENABLE)
+	if(cfg.RW_INTERLEAVE_ENABLE)
 		cacheReg = NULL;
 	else
 		dataReg = NULL;

@@ -38,6 +38,7 @@
 
 #include "SimObj.h"
 #include "FlashConfiguration.h"
+#include "Init.h"
 #include "Controller.h"
 #include "Ftl.h"
 #include "GCFtl.h"
@@ -58,7 +59,7 @@ namespace NVDSim{
     typedef CallbackBase<void,uint64_t,vector<vector<double>>,uint64_t,bool> Callback_v;
 	class NVDIMM : public SimObj{
 		public:
-			NVDIMM(uint64_t id, string dev, string sys, string pwd, string trc);
+			NVDIMM(uint64_t id, string ini, string pwd, string trc);
 			void update(void);
 			bool add(FlashTransaction &trans);
 			bool addTransaction(bool isWrite, uint64_t addr);
@@ -95,13 +96,20 @@ namespace NVDSim{
 			float system_clock_counter, nv_clock_counter1, nv_clock_counter2, controller_clock_counter;
 			float *channel_clock_counter, *nv_clock_counter3;
 			uint64_t* cycles_left;
+
+			// organization parameters so Hybridsim can access them
+			uint64_t channels, dies_per_package, planes_per_die, blocks_per_plane, pages_per_block, page_size;
 	
 			bool faster_channel;
 
+			// configuration for this instance of NVDIMM
+			Configuration cfg;
+
 		private:
-			string dev, sys, cDirectory;
+			string ini, cDirectory;
 	};
 
-	NVDIMM *getNVDIMMInstance(uint64_t id, string deviceFile, string sysFile, string pwd, string trc);
+	NVDIMM *getNVDIMMInstance(uint64_t id, string iniFile, string pwd, string trc);
+	NVDIMM *getNVDIMMInstance(uint64_t id, string iniFile, string unused, string pwd, string trc);
 }
 #endif

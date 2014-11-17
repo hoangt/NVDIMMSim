@@ -35,9 +35,13 @@ namespace NVDSim
 
 	void saveNVState(string filename);
 	void loadNVState(string filename);
+
+	// organization parameters so Hybridsim can access them
+	uint64_t channels, dies_per_package, planes_per_die, blocks_per_plane, pages_per_block, page_size;	
     };
 
-    NVDIMM *getNVDIMMInstance(uint64_t id, string deviceFile, string sysFile, string pwd, string trc);
+    NVDIMM *getNVDIMMInstance(uint64_t id, string iniFile, string pwd, string trc);
+    NVDIMM *getNVDIMMInstance(uint64_t id, string iniFile, string unused, string pwd, string trc);
 }
 
 #endif

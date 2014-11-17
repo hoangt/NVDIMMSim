@@ -39,11 +39,13 @@
 using namespace std;
 using namespace NVDSim;
 
-Block::Block(uint block){
+Block::Block(uint block)
+{
 	block_num = block;
 }
 
-Block::Block(){
+Block::Block()
+{
 
 }
 
@@ -56,11 +58,11 @@ void *Block::read(uint page_num){
 	}
 }
 
-void Block::write(uint page_num, void *data){
+void Block::write(bool gc, uint page_num, void *data){
 	if (page_data.find(page_num) == page_data.end()){
 		page_data[page_num]= data;
 	} else{
-	  if(GARBAGE_COLLECT == 1)
+	  if(gc)
 	  {
 		ERROR("Request to write page "<<page_num<<" failed: page has been written to and not erased"); 
 		exit(1);

@@ -39,617 +39,376 @@ using namespace std;
 // have global scope even though they are set by Init
 
 namespace NVDSim 
-{
-	bool DEBUG_TRANSLATION;
-	
-	bool SCHEDULE;
-	bool WRITE_ON_QUEUE_SIZE;
-	uint64_t WRITE_QUEUE_LIMIT;
-	bool IDLE_WRITE;
-	bool DELAY_WRITE;
-	uint64_t DELAY_WRITE_CYCLES;
-	bool DISK_READ;
-	bool FTL_QUEUE_HANDLING;
-	
-	std::string WEAR_LEVELING_SCHEME;
-	uint64_t GAP_WRITE_INTERVAL;
-	bool RANDOM_ADDR;
-
-	std::string ADDRESS_SCHEME;
-
-	bool REFRESH_ENABLE;
-	uint64_t REFRESH_PERIOD;
-	string REFRESH_LEVEL;
-	
-	bool RW_INTERLEAVE_ENABLE;
-	
-	bool WRITE_PAUSING;
-	bool WRITE_CANCELATION;
-	uint64_t WRITE_ITERATION_CYCLES;
-	
-	bool FRONT_BUFFER;
-	uint64_t REQUEST_BUFFER_SIZE;
-	uint64_t RESPONSE_BUFFER_SIZE;
-	bool BUFFERED;
-	bool CUT_THROUGH;
-	uint64_t IN_BUFFER_SIZE;
-	uint64_t OUT_BUFFER_SIZE;
-	
-	bool CRIT_LINE_FIRST;
-	
-	bool LOGGING;
-	std::string LOG_DIR;
-	bool WEAR_LEVEL_LOG;
-	bool RUNTIME_WRITE; 
-	bool PER_PACKAGE;
-	bool QUEUE_EVENT_LOG;
-	bool PLANE_STATE_LOG;
-	bool WRITE_ARRIVE_LOG;
-	bool READ_ARRIVE_LOG;
-	bool CONCURRENCY_LOG;
-	uint64_t BLOCK_HISTOGRAM_MAX;
-	uint64_t BLOCK_HISTOGRAM_BIN;
-	
-	bool ENABLE_NV_SAVE;
-	std::string NV_SAVE_FILE;
-	bool ENABLE_NV_RESTORE;
-	std::string NV_RESTORE_FILE;
-	
-	std::string DEVICE_TYPE;
-	uint64_t NUM_PACKAGES;
-	uint64_t DIES_PER_PACKAGE;
-	uint64_t PLANES_PER_DIE;
-	uint64_t BLOCKS_PER_PLANE;
-	uint64_t VIRTUAL_BLOCKS_PER_PLANE;
-	uint64_t PAGES_PER_BLOCK; // when in PCM mode this should always be 1 because pages are the erase granularity for PCM
-	uint64_t NV_PAGE_SIZE;
-	float DEVICE_CYCLE;
-	uint64_t DEVICE_WIDTH;
-	bool DEVICE_DATA_CHANNEL;
-	uint64_t DEVICE_DATA_WIDTH;
-	bool CHANNEL_TURN_ENABLE;
-	uint64_t CHANNEL_TURN_TIME;
-	
-	float CHANNEL_CYCLE; //default channel, becomes up channel when down channel is enabled
-	uint64_t CHANNEL_WIDTH;
-
-	bool ENABLE_COMMAND_CHANNEL;
-	uint64_t COMMAND_CHANNEL_WIDTH;
-	
-	bool ENABLE_REQUEST_CHANNEL;
-	uint64_t REQUEST_CHANNEL_WIDTH;
-	
-	bool GARBAGE_COLLECT;
-	bool PRESTATE;
-	float PERCENT_FULL;
-	
-	uint64_t READ_TIME;
-	uint64_t WRITE_TIME;
-	uint64_t ERASE_TIME;
-	uint64_t COMMAND_LENGTH;
-	uint64_t LOOKUP_TIME;
-	uint64_t BUFFER_LOOKUP_TIME;
-	uint64_t QUEUE_ACCESS_TIME;
-	
-	uint64_t REFRESH_TIME;
-	bool OPEN_ROW_ENABLE;
-	uint64_t ROW_HIT_TIME;
-	
-	uint64_t EPOCH_CYCLES;
-	float CYCLE_TIME;
-	float SYSTEM_CYCLE;
-	
-	uint64_t FTL_QUEUE_LENGTH;
-	uint64_t CTRL_READ_QUEUE_LENGTH;
-	uint64_t CTRL_WRITE_QUEUE_LENGTH;
-	
-	double READ_I;
-	double WRITE_I;
-	double ERASE_I;
-	double STANDBY_I;
-	double IN_LEAK_I;
-	double OUT_LEAK_I;
-	double VCC;
-	double ASYNC_READ_I;
-	double VPP_STANDBY_I;
-	double VPP_READ_I;
-	double VPP_WRITE_I;
-	double VPP_ERASE_I;
-	double VPP;
-
-	float IDLE_GC_THRESHOLD;
-	float FORCE_GC_THRESHOLD;
-	float PBLOCKS_PER_VBLOCK;
-
-	bool DEBUG_INIT= 0;
-	
-	// Wear Leveling Enum
-	WearLevelingScheme wearLevelingScheme;
-
-	// Refresh Enum
-	RefreshScheme refreshLevel;
-
-	// Address Enum
-	AddressScheme addressScheme;
-		
-	//Map the string names to the variables they set
-	static ConfigMap configMap[] = {
-		//DEFINE_UINT_PARAM -- see Init.h
-		DEFINE_BOOL_PARAM(SCHEDULE, DEV_PARAM),
-		DEFINE_BOOL_PARAM(WRITE_ON_QUEUE_SIZE, DEV_PARAM),
-		DEFINE_UINT64_PARAM(WRITE_QUEUE_LIMIT, DEV_PARAM),
-		DEFINE_BOOL_PARAM(IDLE_WRITE, DEV_PARAM),
-		DEFINE_BOOL_PARAM(DELAY_WRITE, DEV_PARAM),
-		DEFINE_UINT64_PARAM(DELAY_WRITE_CYCLES, DEV_PARAM),
-		DEFINE_BOOL_PARAM(DISK_READ, DEV_PARAM),
-		DEFINE_BOOL_PARAM(FTL_QUEUE_HANDLING, DEV_PARAM),
-		DEFINE_STRING_PARAM(WEAR_LEVELING_SCHEME, DEV_PARAM),
-		DEFINE_UINT64_PARAM(GAP_WRITE_INTERVAL, DEV_PARAM),
-		DEFINE_BOOL_PARAM(RANDOM_ADDR, DEV_PARAM),
-		DEFINE_STRING_PARAM(ADDRESS_SCHEME, DEV_PARAM),
-		DEFINE_BOOL_PARAM(REFRESH_ENABLE, DEV_PARAM),
-		DEFINE_BOOL_PARAM(RW_INTERLEAVE_ENABLE, DEV_PARAM),
-		DEFINE_BOOL_PARAM(WRITE_PAUSING, DEV_PARAM),
-		DEFINE_BOOL_PARAM(WRITE_CANCELATION, DEV_PARAM),
-		DEFINE_UINT64_PARAM(WRITE_ITERATION_CYCLES, DEV_PARAM),
-		DEFINE_BOOL_PARAM(FRONT_BUFFER, DEV_PARAM),
-		DEFINE_UINT64_PARAM(REQUEST_BUFFER_SIZE, DEV_PARAM),
-		DEFINE_UINT64_PARAM(RESPONSE_BUFFER_SIZE, DEV_PARAM),
-		DEFINE_BOOL_PARAM(BUFFERED, DEV_PARAM),
-		DEFINE_BOOL_PARAM(CUT_THROUGH, DEV_PARAM),
-		DEFINE_UINT64_PARAM(IN_BUFFER_SIZE, DEV_PARAM),
-		DEFINE_UINT64_PARAM(OUT_BUFFER_SIZE, DEV_PARAM),
-		DEFINE_BOOL_PARAM(CRIT_LINE_FIRST, DEV_PARAM),
-		DEFINE_BOOL_PARAM(LOGGING, DEV_PARAM),
-		DEFINE_STRING_PARAM(LOG_DIR, DEV_PARAM),
-		DEFINE_BOOL_PARAM(WEAR_LEVEL_LOG, DEV_PARAM),
-		DEFINE_BOOL_PARAM(RUNTIME_WRITE, DEV_PARAM),
-		DEFINE_BOOL_PARAM(PER_PACKAGE, DEV_PARAM),
-		DEFINE_BOOL_PARAM(QUEUE_EVENT_LOG, DEV_PARAM),
-		DEFINE_BOOL_PARAM(PLANE_STATE_LOG, DEV_PARAM),
-		DEFINE_BOOL_PARAM(WRITE_ARRIVE_LOG, DEV_PARAM),
-		DEFINE_BOOL_PARAM(READ_ARRIVE_LOG, DEV_PARAM),
-		DEFINE_BOOL_PARAM(CONCURRENCY_LOG, DEV_PARAM),
-		DEFINE_UINT64_PARAM(BLOCK_HISTOGRAM_MAX, DEV_PARAM),
-		DEFINE_UINT64_PARAM(BLOCK_HISTOGRAM_BIN, DEV_PARAM),
-		DEFINE_BOOL_PARAM(ENABLE_NV_SAVE, DEV_PARAM),
-		DEFINE_STRING_PARAM(NV_SAVE_FILE, DEV_PARAM),
-		DEFINE_BOOL_PARAM(ENABLE_NV_RESTORE, DEV_PARAM),
-		DEFINE_STRING_PARAM(NV_RESTORE_FILE, DEV_PARAM),
-		DEFINE_STRING_PARAM(DEVICE_TYPE, DEV_PARAM),
-		DEFINE_UINT64_PARAM(NUM_PACKAGES,DEV_PARAM),
-		DEFINE_UINT64_PARAM(DIES_PER_PACKAGE,DEV_PARAM),
-		DEFINE_UINT64_PARAM(PLANES_PER_DIE,DEV_PARAM),
-		//DEFINE_UINT64_PARAM(BLOCKS_PER_PLANE,DEV_PARAM),
-		DEFINE_UINT64_PARAM(VIRTUAL_BLOCKS_PER_PLANE,DEV_PARAM),
-		DEFINE_UINT64_PARAM(PAGES_PER_BLOCK,DEV_PARAM),
-		DEFINE_UINT64_PARAM(NV_PAGE_SIZE,DEV_PARAM),
-		DEFINE_FLOAT_PARAM(DEVICE_CYCLE,DEV_PARAM),
-		DEFINE_UINT64_PARAM(DEVICE_WIDTH,DEV_PARAM),
-		DEFINE_BOOL_PARAM(DEVICE_DATA_CHANNEL, DEV_PARAM),
-		DEFINE_UINT64_PARAM(DEVICE_DATA_WIDTH,DEV_PARAM),
-		DEFINE_BOOL_PARAM(CHANNEL_TURN_ENABLE, DEV_PARAM),
-		DEFINE_UINT64_PARAM(CHANNEL_TURN_TIME,DEV_PARAM),
-		DEFINE_FLOAT_PARAM(CHANNEL_CYCLE,DEV_PARAM),
-		DEFINE_UINT64_PARAM(CHANNEL_WIDTH,DEV_PARAM),
-		DEFINE_BOOL_PARAM(ENABLE_COMMAND_CHANNEL,DEV_PARAM),
-		DEFINE_UINT64_PARAM(COMMAND_CHANNEL_WIDTH,DEV_PARAM),
-		DEFINE_BOOL_PARAM(ENABLE_REQUEST_CHANNEL,DEV_PARAM),
-		DEFINE_UINT64_PARAM(REQUEST_CHANNEL_WIDTH,DEV_PARAM),
-		DEFINE_BOOL_PARAM(GARBAGE_COLLECT,DEV_PARAM),
-		DEFINE_BOOL_PARAM(PRESTATE,DEV_PARAM),
-		DEFINE_FLOAT_PARAM(PERCENT_FULL,DEV_PARAM),
-		DEFINE_UINT64_PARAM(READ_TIME,DEV_PARAM),
-		DEFINE_UINT64_PARAM(WRITE_TIME,DEV_PARAM),
-		DEFINE_UINT64_PARAM(ERASE_TIME,DEV_PARAM),
-		DEFINE_UINT64_PARAM(COMMAND_LENGTH,DEV_PARAM),
-		DEFINE_UINT64_PARAM(LOOKUP_TIME,DEV_PARAM),
-		DEFINE_UINT64_PARAM(BUFFER_LOOKUP_TIME,DEV_PARAM),
-		DEFINE_UINT64_PARAM(QUEUE_ACCESS_TIME,DEV_PARAM),
-		DEFINE_UINT64_PARAM(REFRESH_TIME,DEV_PARAM),
-		DEFINE_BOOL_PARAM(OPEN_ROW_ENABLE,DEV_PARAM),
-		DEFINE_UINT64_PARAM(ROW_HIT_TIME,DEV_PARAM),
-		DEFINE_UINT64_PARAM(REFRESH_PERIOD,DEV_PARAM),
-		DEFINE_STRING_PARAM(REFRESH_LEVEL, DEV_PARAM),
-		DEFINE_UINT64_PARAM(EPOCH_CYCLES,DEV_PARAM),
-		DEFINE_FLOAT_PARAM(CYCLE_TIME,DEV_PARAM),
-		DEFINE_FLOAT_PARAM(SYSTEM_CYCLE,DEV_PARAM),
-		DEFINE_UINT64_PARAM(FTL_QUEUE_LENGTH,DEV_PARAM),
-		DEFINE_UINT64_PARAM(CTRL_READ_QUEUE_LENGTH,DEV_PARAM),
-		DEFINE_UINT64_PARAM(CTRL_WRITE_QUEUE_LENGTH,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(READ_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(WRITE_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(ERASE_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(STANDBY_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(IN_LEAK_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(OUT_LEAK_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(VCC,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(ASYNC_READ_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(VPP_STANDBY_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(VPP_READ_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(VPP_WRITE_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(VPP_ERASE_I,DEV_PARAM),
-		DEFINE_DOUBLE_PARAM(VPP,DEV_PARAM),
-		DEFINE_FLOAT_PARAM(IDLE_GC_THRESHOLD,DEV_PARAM),
-		DEFINE_FLOAT_PARAM(FORCE_GC_THRESHOLD,DEV_PARAM),
-		DEFINE_FLOAT_PARAM(PBLOCKS_PER_VBLOCK,DEV_PARAM),
-		
-		{"", NULL, UINT64, SYS_PARAM, false} // tracer value to signify end of list; if you delete it, epic fail will result
-	};
-	
-	void Init::WriteValuesOut(std::ofstream &visDataOut) 
+{	
+	// makes a new configuration object and returns it to the caller
+	Configuration Init::read(string inifile)
 	{
-		//DEBUG("WRITE CALLED");
-		visDataOut<<"!!SYSTEM_INI"<<endl;
-		for (size_t i=0; configMap[i].variablePtr != NULL; i++) 
+		ifstream inFile;
+		char tmp[256];
+		string tmp2;
+		list<string> lines;
+
+		inFile.open(inifile);
+		if (!inFile.is_open())
 		{
-			if (configMap[i].parameterType == SYS_PARAM) 
+			cerr << "ERROR: Failed to load NVDIMM's Ini file: " << inifile << "\n";
+			abort();
+		}
+
+		// put the text file into a data structure we can work with
+		while(!inFile.eof())
+		{
+			inFile.getline(tmp, 256);
+			tmp2 = (string)tmp;
+
+			// Filter comments out.
+			size_t pos = tmp2.find("#");
+			tmp2 = tmp2.substr(0, pos);
+
+			// Strip whitespace from the ends.
+			tmp2 = strip(tmp2);
+
+			// Filter newlines out.
+			if (tmp2.empty())
+				continue;
+
+			// Add it to the lines list.
+			lines.push_back(tmp2);
+		}
+		inFile.close();
+
+		
+		// make a new configuration object
+		Configuration cfg = Configuration();
+
+		list<string>::iterator it;
+		for (it = lines.begin(); it != lines.end(); it++)
+		{
+			list<string> split_line = split((*it), "=", 2);
+
+			if (split_line.size() != 2)
 			{
-				visDataOut<<configMap[i].iniKey<<"=";
-				switch (configMap[i].variableType) 
+				cerr << "ERROR: Parsing ini failed on line: " << (*it) << "\n";
+				cerr << "There should be exactly one '=' per line\n";
+				abort();
+			}
+
+			string key = split_line.front();
+			string value = split_line.back();
+
+			// Place the value into the appropriate global.
+			// Debugging Options
+			if (key.compare("DEBUG_TRANSLATION") == 0)
+				convert_bool(cfg.DEBUG_TRANSLATION, value, key);
+
+			// Scheduling Options
+			else if (key.compare("SCHEDULE") == 0)
+				convert_bool(cfg.SCHEDULE, value, key);
+			else if (key.compare("WRITE_ON_QUEUE_SIZE") == 0)
+				convert_bool(cfg.WRITE_ON_QUEUE_SIZE, value, key);
+			else if (key.compare("WRITE_QUEUE_LIMIT") == 0)
+				convert_uint64_t(cfg.WRITE_QUEUE_LIMIT, value, key);
+			else if (key.compare("IDLE_WRITE") == 0)
+				convert_bool(cfg.IDLE_WRITE, value, key);
+			else if (key.compare("DELAY_WRITE") == 0)
+				convert_bool(cfg.DELAY_WRITE, value, key);
+			else if (key.compare("DELAY_WRITE_CYCLES") == 0)
+				convert_uint64_t(cfg.DELAY_WRITE_CYCLES, value, key);
+			
+			else if (key.compare("FTL_QUEUE_HANDLING") == 0)
+				convert_bool(cfg.FTL_QUEUE_HANDLING, value, key);
+
+			// Wear Leveling Options
+			else if (key.compare("WEAR_LEVELING_SCHEME") == 0)
+			{
+				if(value.compare("round_robin") == 0)
 				{
-					//parse and set each type of variable
-				case UINT:
-					visDataOut << *((uint *)configMap[i].variablePtr);
-					break;
-				case UINT64:
-					visDataOut << *((uint64_t *)configMap[i].variablePtr);
-					break;
-				case FLOAT:
-					visDataOut << *((float *)configMap[i].variablePtr);
-					break;
-				case DOUBLE:
-					visDataOut << *((double *)configMap[i].variablePtr);
-					break;
-				case STRING:
-					visDataOut << *((string *)configMap[i].variablePtr);
-					break;
-				case BOOL:
-					if (*((bool *)configMap[i].variablePtr)) {
-						visDataOut <<"true";
-					} else {
-						visDataOut <<"false";
-					}
-					break;
+					cfg.wearLevelingScheme = RoundRobin;
 				}
-				visDataOut << endl;
+				else if(value.compare("start_gap") == 0)
+				{
+					cfg.wearLevelingScheme = StartGap;
+				}
+				else if(value.compare("direct_translation") == 0)
+				{
+					cfg.wearLevelingScheme = DirectTranslation;
+				}
+				else
+				{
+					cout << "WARNING: unknown wear leveling policy '"<<value<<"'; valid values are 'round_robin' and 'direct_translation'. Defaulting to round_robin \n";
+					cfg.wearLevelingScheme = RoundRobin;
+				}
+			}
+			else if (key.compare("GAP_WRITE_INTERVAL") == 0)
+				convert_uint64_t(cfg.GAP_WRITE_INTERVAL, value, key);
+			else if (key.compare("RANDOM_ADDR") == 0)
+				convert_bool(cfg.RANDOM_ADDR, value, key);
+
+			// Addressing Options
+			else if (key.compare("ADDRESS_SCHEME") == 0)
+			{
+				if(value.compare("channel_vault_bank_row_col") == 0)
+				{
+					cfg.addressScheme = ChannelVaultBankRowCol;
+				}
+				else if(value.compare("col_row_bank_vault_channel") == 0)
+				{
+					cfg.addressScheme = ColRowBankVaultChannel;
+				}
+				else if(value.compare("row_bank_vault_channel_col") == 0)
+				{
+					cfg.addressScheme = RowBankVaultChannelCol;
+				}
+				else if(value.compare("bank_vault_channel_col_row") == 0)
+				{
+					cfg.addressScheme = BankVaultChannelColRow;
+				}
+				else if(value.compare("bank_vault_col_channel_row") == 0)
+				{
+					cfg.addressScheme = BankVaultColChannelRow;
+				}
+				else if(value.compare("bank_channel_vault_col_row") == 0)
+				{
+					cfg.addressScheme = BankChannelVaultColRow;
+				}
+				else if(value.compare("default") == 0)
+				{
+					cfg.addressScheme = Default;
+				}
+				else
+				{
+					cout << "WARNING: unknown address policy '"<<value<<"'; valid values are 'channel_vault_bank_row_col','col_row_bank_vault_channel', 'row_bank_vault_channel_col', and 'Default'. Defaulting to Default \n";
+					cfg.addressScheme = Default;
+				}
+			}
+			
+			// Refresh Support
+			else if (key.compare("REFRESH_ENABLE") == 0)
+				convert_bool(cfg.REFRESH_ENABLE, value, key);
+			else if (key.compare("REFRESH_PERIOD") == 0)
+				convert_uint64_t(cfg.REFRESH_PERIOD, value, key);
+			else if (key.compare("REFRESH_LEVEL") == 0)
+			{
+				if(value.compare("per_bank") == 0)
+				{
+					cfg.refreshLevel = PerBank;
+				}
+				else if(value.compare("per_vault") == 0)
+				{
+					cfg.refreshLevel = PerVault;
+				}
+				else if(value.compare("per_channel") == 0)
+				{
+					cfg.refreshLevel = PerChannel;
+				}
+				else
+				{
+					cout << "WARNING: unknown refresh policy '"<<value<<"'; valid values are 'per_bank','per_vault', and 'per_channel'. Defaulting to per_bank \n";
+					cfg.refreshLevel = PerBank;
+				}
+			}
+			
+			// Read / Write Interleaving Options
+			else if (key.compare("RW_INTERLEAVE_ENABLE") == 0)
+				convert_bool(cfg.RW_INTERLEAVE_ENABLE, value, key);
+
+			// Write Blocking Avoidance
+			else if (key.compare("WRITE_PAUSING") == 0)
+				convert_bool(cfg.WRITE_PAUSING, value, key);
+			else if (key.compare("WRITE_CANCELATION") == 0)
+				convert_bool(cfg.WRITE_CANCELATION, value, key);
+			else if (key.compare("WRITE_ITERATION_CYCLES") == 0)
+				convert_uint64_t(cfg.WRITE_ITERATION_CYCLES, value, key);
+			
+			// SSD Options
+			else if (key.compare("DISK_READ") == 0)
+				convert_bool(cfg.DISK_READ, value, key);			
+
+			// Buffering Options
+			else if (key.compare("FRONT_BUFFER") == 0)
+				convert_bool(cfg.FRONT_BUFFER, value, key);
+			else if (key.compare("REQUEST_BUFFER_SIZE") == 0)
+				convert_uint64_t(cfg.REQUEST_BUFFER_SIZE, value, key);
+			else if (key.compare("RESPONSE_BUFFER_SIZE") == 0)
+				convert_uint64_t(cfg.RESPONSE_BUFFER_SIZE, value, key);
+			else if (key.compare("BUFFERED") == 0)
+				convert_bool(cfg.BUFFERED, value, key);
+			else if (key.compare("CUT_THROUGH") == 0)
+				convert_bool(cfg.CUT_THROUGH, value, key);
+			else if (key.compare("IN_BUFFER_SIZE") == 0)
+				convert_uint64_t(cfg.IN_BUFFER_SIZE, value, key);
+			else if (key.compare("OUT_BUFFER_SIZE") == 0)
+				convert_uint64_t(cfg.OUT_BUFFER_SIZE, value, key);
+
+			// Critical Cache Line First Options
+			else if (key.compare("CRIT_LINE_FIRST") == 0)
+				convert_bool(cfg.CRIT_LINE_FIRST, value, key);
+
+			// Logging Options
+			else if (key.compare("LOGGING") == 0)
+				convert_bool(cfg.LOGGING, value, key);
+			else if (key.compare("LOG_DIR") == 0)
+				cfg.LOG_DIR = value;
+			else if (key.compare("WEAR_LEVEL_LOG") == 0)
+				convert_bool(cfg.WEAR_LEVEL_LOG, value, key);
+			else if (key.compare("RUNTIME_WRITE") == 0)
+				convert_bool(cfg.RUNTIME_WRITE, value, key);
+			else if (key.compare("PER_PACKAGE") == 0)
+				convert_bool(cfg.PER_PACKAGE, value, key);
+			else if (key.compare("QUEUE_EVENT_LOG") == 0)
+				convert_bool(cfg.QUEUE_EVENT_LOG, value, key);
+			else if (key.compare("PLANE_STATE_LOG") == 0)
+				convert_bool(cfg.PLANE_STATE_LOG, value, key);
+			else if (key.compare("WRITE_ARRIVE_LOG") == 0)
+				convert_bool(cfg.WRITE_ARRIVE_LOG, value, key);
+			else if (key.compare("READ_ARRIVE_LOG") == 0)
+				convert_bool(cfg.READ_ARRIVE_LOG, value, key);
+			else if (key.compare("CONCURRENCY_LOG") == 0)
+				convert_bool(cfg.CONCURRENCY_LOG, value, key);
+			else if (key.compare("BLOCK_HISTOGRAM_MAX") == 0)
+				convert_uint64_t(cfg.BLOCK_HISTOGRAM_MAX, value, key);
+			else if (key.compare("BLOCK_HISTOGRAM_BIN") == 0)
+				convert_uint64_t(cfg.BLOCK_HISTOGRAM_BIN, value, key);
+
+			// Save and Restore Options
+			else if (key.compare("ENABLE_NV_SAVE") == 0)
+				convert_bool(cfg.ENABLE_NV_SAVE, value, key);
+			else if (key.compare("NV_SAVE_FILE") == 0)
+				cfg.NV_SAVE_FILE = value;
+			else if (key.compare("ENABLE_NV_RESTORE") == 0)
+				convert_bool(cfg.ENABLE_NV_RESTORE, value, key);
+			else if (key.compare("NV_RESTORE_FILE") == 0)
+				cfg.NV_RESTORE_FILE = value;
+
+			// General Organization Options
+			else if (key.compare("DEVICE_TYPE") == 0)
+				cfg.DEVICE_TYPE = value;
+			else if (key.compare("NUM_PACKAGES") == 0)
+				convert_uint64_t(cfg.NUM_PACKAGES, value, key);
+			else if (key.compare("DIES_PER_PACKAGE") == 0)
+				convert_uint64_t(cfg.DIES_PER_PACKAGE, value, key);
+			else if (key.compare("PLANES_PER_DIE") == 0)
+				convert_uint64_t(cfg.PLANES_PER_DIE, value, key);
+			else if (key.compare("VIRTUAL_BLOCKS_PER_PLANE") == 0)
+				convert_uint64_t(cfg.VIRTUAL_BLOCKS_PER_PLANE, value, key);
+			else if (key.compare("PAGES_PER_BLOCK") == 0)
+				convert_uint64_t(cfg.PAGES_PER_BLOCK, value, key);
+			else if (key.compare("NV_PAGE_SIZE") == 0)
+				convert_uint64_t(cfg.NV_PAGE_SIZE, value, key);
+
+			// Channel Options
+			else if (key.compare("DEVICE_CYCLE") == 0)
+				convert_float(cfg.DEVICE_CYCLE, value, key);
+			else if (key.compare("DEVICE_WIDTH") == 0)
+				convert_uint64_t(cfg.DEVICE_WIDTH, value, key);
+			else if (key.compare("DEVICE_DATA_CHANNEL") == 0)
+				convert_bool(cfg.DEVICE_DATA_CHANNEL, value, key);
+			else if (key.compare("DEVICE_DATA_WIDTH") == 0)
+				convert_uint64_t(cfg.DEVICE_DATA_WIDTH, value, key);
+			else if (key.compare("CHANNEL_TURN_ENABLE") == 0)
+				convert_bool(cfg.CHANNEL_TURN_ENABLE, value, key);
+			else if (key.compare("CHANNEL_TURN_TIME") == 0)
+				convert_uint64_t(cfg.CHANNEL_TURN_TIME, value, key);
+			else if (key.compare("CHANNEL_CYCLE") == 0)
+				convert_float(cfg.CHANNEL_CYCLE, value, key);
+			else if (key.compare("CHANNEL_WIDTH") == 0)
+				convert_uint64_t(cfg.CHANNEL_WIDTH, value, key);
+			else if (key.compare("ENABLE_COMMAND_CHANNEL") == 0)
+				convert_bool(cfg.ENABLE_COMMAND_CHANNEL, value, key);
+			else if (key.compare("COMMAND_CHANNEL_WIDTH") == 0)
+				convert_uint64_t(cfg.COMMAND_CHANNEL_WIDTH, value, key);
+			else if (key.compare("ENABLE_REQUEST_CHANNEL") == 0)
+				convert_bool(cfg.ENABLE_REQUEST_CHANNEL, value, key);
+			else if (key.compare("REQUEST_CHANNEL_WIDTH") == 0)
+				convert_uint64_t(cfg.REQUEST_CHANNEL_WIDTH, value, key);
+
+			// Garbage Collection Options
+			else if (key.compare("GARBAGE_COLLECT") == 0)
+				convert_bool(cfg.GARBAGE_COLLECT, value, key);
+			else if (key.compare("PRESTATE") == 0)
+				convert_bool(cfg.PRESTATE, value, key);
+			else if (key.compare("PERCENT_FULL") == 0)
+				convert_float(cfg.PERCENT_FULL, value, key);
+			else if (key.compare("IDLE_GC_THRESHOLD") == 0)
+				convert_float(cfg.IDLE_GC_THRESHOLD, value, key);
+			else if (key.compare("FORCE_GC_THRESHOLD") == 0)
+				convert_float(cfg.FORCE_GC_THRESHOLD, value, key);
+			else if (key.compare("PBLOCKS_PER_VBLOCK") == 0)
+				convert_float(cfg.PBLOCKS_PER_VBLOCK, value, key);
+			
+			// Timing Options
+			else if (key.compare("READ_TIME") == 0)
+				convert_uint64_t(cfg.READ_TIME, value, key);
+			else if (key.compare("WRITE_TIME") == 0)
+				convert_uint64_t(cfg.WRITE_TIME, value, key);
+			else if (key.compare("ERASE_TIME") == 0)
+				convert_uint64_t(cfg.ERASE_TIME, value, key);
+			else if (key.compare("COMMAND_LENGTH") == 0)
+				convert_uint64_t(cfg.COMMAND_LENGTH, value, key);
+			else if (key.compare("LOOKUP_TIME") == 0)
+				convert_uint64_t(cfg.LOOKUP_TIME, value, key);
+			else if (key.compare("BUFFER_LOOKUP_TIME") == 0)
+				convert_uint64_t(cfg.BUFFER_LOOKUP_TIME, value, key);
+			else if (key.compare("QUEUE_ACCESS_TIME") == 0)
+				convert_uint64_t(cfg.QUEUE_ACCESS_TIME, value, key);
+			else if (key.compare("REFRESH_TIME") == 0)
+				convert_uint64_t(cfg.REFRESH_TIME, value, key);
+			else if (key.compare("OPEN_ROW_ENABLE") == 0)
+				convert_bool(cfg.OPEN_ROW_ENABLE, value, key);
+			else if (key.compare("ROW_HIT_TIME") == 0)
+				convert_uint64_t(cfg.ROW_HIT_TIME, value, key);
+			else if (key.compare("EPOCH_CYCLES") == 0)
+				convert_uint64_t(cfg.EPOCH_CYCLES, value, key);
+			else if (key.compare("CYCLE_TIME") == 0)
+				convert_float(cfg.CYCLE_TIME, value, key);
+			else if (key.compare("SYSTEM_CYCLE") == 0)
+				convert_float(cfg.SYSTEM_CYCLE, value, key);
+
+			// Queue Options
+			else if (key.compare("FTL_QUEUE_LENGTH") == 0)
+				convert_uint64_t(cfg.FTL_QUEUE_LENGTH, value, key);
+			else if (key.compare("CTRL_READ_QUEUE_LENGTH") == 0)
+				convert_uint64_t(cfg.CTRL_READ_QUEUE_LENGTH, value, key);
+			else if (key.compare("CTRL_WRITE_QUEUE_LENGTH") == 0)
+				convert_uint64_t(cfg.CTRL_WRITE_QUEUE_LENGTH, value, key);
+
+			// Power Settings
+			else if (key.compare("READ_I") == 0)
+				convert_float(cfg.READ_I, value, key);
+			else if (key.compare("WRITE_I") == 0)
+				convert_float(cfg.WRITE_I, value, key);
+			else if (key.compare("ERASE_I") == 0)
+				convert_float(cfg.ERASE_I, value, key);
+			else if (key.compare("STANDBY_I") == 0)
+				convert_float(cfg.STANDBY_I, value, key);
+			else if (key.compare("IN_LEAK_I") == 0)
+				convert_float(cfg.IN_LEAK_I, value, key);
+			else if (key.compare("OUT_LEAK_I") == 0)
+				convert_float(cfg.OUT_LEAK_I, value, key);
+			else if (key.compare("VCC") == 0)
+				convert_float(cfg.VCC, value, key);
+			else if (key.compare("ASYNC_READ_I") == 0)
+				convert_float(cfg.ASYNC_READ_I, value, key);
+			else if (key.compare("VPP_STANDBY_I") == 0)
+				convert_float(cfg.VPP_STANDBY_I, value, key);
+			else if (key.compare("VPP_READ_I") == 0)
+				convert_float(cfg.VPP_READ_I, value, key);
+			else if (key.compare("VPP_WRITE_I") == 0)
+				convert_float(cfg.VPP_WRITE_I, value, key);
+			else if (key.compare("VPP_ERASE_I") == 0)
+				convert_float(cfg.VPP_ERASE_I, value, key);
+			else if (key.compare("VPP") == 0)
+				convert_float(cfg.VPP, value, key);
+			
+			// Something ain't right
+			else
+			{
+				cerr << "ERROR: Illegal key/value pair in NVDIMM ini file: " << key << "=" << value << "\n";
+				cerr << "This could either be due to an illegal key or the incorrect value type for a key\n";
+				abort();
 			}
 		}
 		
+		return cfg;
 	}
-    
-    void Init::SetKey(string key, string valueString, bool isSystemParam, size_t lineNumber) 
-    {
-	size_t i;
-	uint intValue;
-	uint64_t int64Value;
-	float floatValue;
-	double doubleValue;
-	
-	for (i=0; configMap[i].variablePtr != NULL; i++) 
-	{	
-	    istringstream iss(valueString);
-	    // match up the string in the config map with the key we parsed
-	    if (key.compare(configMap[i].iniKey) == 0) {
-		switch (configMap[i].variableType) {
-		    //parse and set each type of variable
-		case UINT:
-		    if ((iss >> dec >> intValue).fail()) 
-		    {
-			ERROR("could not parse line "<<lineNumber<<" (non-numeric value '"<<valueString<<"')?");
-		    }
-		    *((uint *)configMap[i].variablePtr) = intValue;
-		    if (DEBUG_INIT)
-		    {
-			DEBUG("\t - SETTING "<<configMap[i].iniKey<<"="<<intValue);
-		    }
-		    break;
-		case UINT64:
-		    if ((iss >> dec >> int64Value).fail()) 
-		    {
-			ERROR("could not parse line "<<lineNumber<<" (non-numeric value '"<<valueString<<"')?");
-		    }
-		    *((uint64_t *)configMap[i].variablePtr) = int64Value;
-		    if (DEBUG_INIT)
-		    {
-			DEBUG("\t - SETTING "<<configMap[i].iniKey<<"="<<int64Value);
-		    }
-		    break;
-		case FLOAT:
-		    if ((iss >> dec >> floatValue).fail()) 
-		    {
-			ERROR("could not parse line "<<lineNumber<<" (non-numeric value '"<<valueString<<"')?");
-		    }
-		    *((float *)configMap[i].variablePtr) = floatValue;
-		    if (DEBUG_INIT)
-		    {
-			DEBUG("\t - SETTING "<<configMap[i].iniKey<<"="<<floatValue);
-		    }
-		    break;
-		case DOUBLE:
-		    if ((iss >> dec >> doubleValue).fail()) 
-		    {
-			ERROR("could not parse line "<<lineNumber<<" (non-numeric value '"<<valueString<<"')?");
-		    }
-		    *((double *)configMap[i].variablePtr) = doubleValue;
-		    if (DEBUG_INIT)
-		    {
-			DEBUG("\t - SETTING "<<configMap[i].iniKey<<"="<<doubleValue);
-		    }
-		    break;
-		case STRING:
-		    *((string *)configMap[i].variablePtr) = string(valueString);
-		    if (DEBUG_INIT)
-		    {
-			DEBUG("\t - SETTING "<<configMap[i].iniKey<<"="<<valueString);
-		    }
-		    
-		    break;
-		case BOOL:
-		    if (valueString == "true" || valueString == "1") {
-			*((bool *)configMap[i].variablePtr) = true;
-		    } else {
-			*((bool *)configMap[i].variablePtr) = false;
-		    }
-		}
-		// lineNumber == 0 implies that this is an override parameter from the command line, so don't bother doing these checks
-		if (lineNumber > 0) 
-		{
-		    if (isSystemParam && configMap[i].parameterType == DEV_PARAM) 
-		    {
-			DEBUG("WARNING: Found device parameter "<<configMap[i].iniKey<<" in system config file");
-		    } 
-		    else if (!isSystemParam && configMap[i].parameterType == SYS_PARAM) 
-		    {
-			DEBUG("WARNING: Found system parameter "<<configMap[i].iniKey<<" in device config file");
-		    }
-		}
-		// use the pointer stored in the config map to set the value of the variable
-		// to make sure all parameters are in the ini file
-		configMap[i].wasSet = true;
-		break;
-	    }
-	}
-
-	if (configMap[i].variablePtr == NULL) 
-	{
-	    DEBUG("WARNING: UNKNOWN KEY '"<<key<<"' IN INI FILE");
-	}
-    }
-    
-    void Init::ReadIniFile(string filename, bool isSystemFile)
-    {
-	ifstream iniFile;
-	string line;
-	string key,valueString;
-	
-	size_t commentIndex, equalsIndex;
-	size_t lineNumber=0;
-
-	iniFile.open(filename.c_str());
-	if (iniFile.is_open())
-	{
-	    while (!iniFile.eof()) 
-	    {
-		lineNumber++;
-		//cout<<line<<endl;
-		getline(iniFile, line);
-		//this can happen if the filename is actually a directory
-		if (iniFile.bad()) 
-		{
-		    ERROR("Cannot read ini file '"<<filename<<"'");
-		    exit(-1);
-		}
-		// skip zero-length lines
-		if (line.size() == 0)
-		{
-//		DEBUG("Skipping blank line "<<lineNumber);
-		    continue;
-		}
-		//search for a comment char
-		if ((commentIndex = line.find_first_of(";")) != string::npos) 
-		{
-		    //if the comment char is the first char, ignore the whole line
-		    if (commentIndex == 0) 
-		    {
-//		    DEBUG("Skipping comment line "<<lineNumber);
-			continue;
-		    }
-//		DEBUG("Truncating line at comment"<<line[commentIndex-1]);
-		    //truncate the line at first comment before going on
-		    line = line.substr(0,commentIndex); 
-		}
-		// trim off the end spaces that might have been between the value and comment char
-		size_t whiteSpaceEndIndex;
-		if ((whiteSpaceEndIndex = line.find_last_not_of(" \t")) != string::npos)
-		{
-		    line = line.substr(0,whiteSpaceEndIndex+1);
-		}
-		
-		// at this point line should be a valid, commentless string
-		
-		// a line has to have an equals sign
-		if ((equalsIndex = line.find_first_of("=")) == string::npos)
-		{
-		    ERROR("Malformed Line "<<lineNumber<<" (missing equals)");
-		    abort();
-		}
-		size_t strlen = line.size();
-		// all characters before the equals are the key
-		key = line.substr(0, equalsIndex);
-		// all characters after the equals are the value
-		valueString = line.substr(equalsIndex+1,strlen-equalsIndex);
-		
-		Init::SetKey(key, valueString, lineNumber, isSystemFile);
-		// got to the end of the config map without finding the key
-	    }
-	}
-	else
-	{
-	    ERROR ("Unable to load ini file "<<filename);
-	    abort();
-	}
-    }
-    
-    void Init::OverrideKeys(vector<string> keys, vector<string>values) 
-    {
-	if (keys.size() != values.size()) {
-	    ERROR("-o option is messed up");
-	    exit(-1);
-	}
-	for (size_t i=0; i<keys.size(); i++) {
-	    Init::SetKey(keys[i], values[i]);
-	}
-    }
-    
-    bool Init::CheckIfAllSet() {
-	// check to make sure all parameters that we exepected were set 
-	for (size_t i=0; configMap[i].variablePtr != NULL; i++) 
-	{
-	    if (!configMap[i].wasSet) 
-	    {
-		DEBUG("WARNING: KEY "<<configMap[i].iniKey<<" NOT FOUND IN INI FILE.");
-		switch (configMap[i].variableType) 
-		{
-		    //the string and bool values can be defaulted, but generally we need all the numeric values to be set to continue
-		case UINT: 
-		    if (configMap[i].iniKey.compare((std::string)"FTL_QUEUE_LENGTH") == 0 ||
-			configMap[i].iniKey.compare((std::string)"CTRL_QUEUE_LENGTH") == 0 ||
-			configMap[i].iniKey.compare((std::string)"WRITE_QUEUE_LIMIT") == 0 ||
-			configMap[i].iniKey.compare((std::string)"PERCENT_DIRTY") == 0 ||
-			configMap[i].iniKey.compare((std::string)"GAP_WRITE_INTERVAL") == 0)
-		    {
-			*((uint *)configMap[i].variablePtr) = 0;
-			DEBUG("\tSetting Default: "<<configMap[i].iniKey<<"=0");
-			break;
-		    }
-		case UINT64:
-		case FLOAT:
-		    ERROR("Cannot continue without key '"<<configMap[i].iniKey<<"' set.");
-		    return false;
-		    break;
-		case DOUBLE:
-		    if (configMap[i].iniKey.compare((std::string)"ASYNC_READ_I") == 0 ||
-			configMap[i].iniKey.compare((std::string)"VPP_STANDBY_I") == 0 ||
-			configMap[i].iniKey.compare((std::string)"VPP_READ_I") == 0 ||
-			configMap[i].iniKey.compare((std::string)"VPP_WRITE_I") == 0 ||
-			configMap[i].iniKey.compare((std::string)"VPP_ERASE_I") == 0 ||
-			configMap[i].iniKey.compare((std::string)"VPP") == 0)
-		    {
-			*((double *)configMap[i].variablePtr) = 0.0;
-			DEBUG("\tSetting Default: "<<configMap[i].iniKey<<"=0.0");
-		    }		  
-		    else
-		    {
-			ERROR("Cannot continue without key '"<<configMap[i].iniKey<<"' set.");
-			return false;
-		    }
-		    break;
-		case BOOL:
-		    *((bool *)configMap[i].variablePtr) = false;
-		    DEBUG("\tSetting Default: "<<configMap[i].iniKey<<"=false");
-		    break;
-		case STRING:
-		    break;
-		}
-	    }
-	}
-	return true;
-    }
-
-    void Init::EnumsFromWearLevelStrings()
-    {
-		if(WEAR_LEVELING_SCHEME == "round_robin")
-		{
-			wearLevelingScheme = RoundRobin;
-		}
-		else if(WEAR_LEVELING_SCHEME == "start_gap")
-		{
-			wearLevelingScheme = StartGap;
-		}
-		else if(WEAR_LEVELING_SCHEME == "direct_translation")
-		{
-			wearLevelingScheme = DirectTranslation;
-		}
-		else
-		{
-			cout << "WARNING: unknown wear leveling policy '"<<WEAR_LEVELING_SCHEME<<"'; valid values are 'round_robin' and 'direct_translation'. Defaulting to round_robin \n";
-			wearLevelingScheme = RoundRobin;
-		}
-    }
-
-	void Init::EnumsFromRefreshStrings()
-    {
-		if(REFRESH_LEVEL == "per_bank")
-		{
-			refreshLevel = PerBank;
-		}
-		else if(REFRESH_LEVEL == "per_vault")
-		{
-			refreshLevel = PerVault;
-		}
-		else if(REFRESH_LEVEL == "per_channel")
-		{
-			refreshLevel = PerChannel;
-		}
-		else
-		{
-			cout << "WARNING: unknown refresh policy '"<<REFRESH_LEVEL<<"'; valid values are 'per_bank','per_vault', and 'per_channel'. Defaulting to per_bank \n";
-			refreshLevel = PerBank;
-		}
-    }
-
-	void Init::EnumsFromAddressStrings()
-    {
-		if(ADDRESS_SCHEME == "channel_vault_bank_row_col")
-		{
-			addressScheme = ChannelVaultBankRowCol;
-		}
-		else if(ADDRESS_SCHEME == "col_row_bank_vault_channel")
-		{
-			addressScheme = ColRowBankVaultChannel;
-		}
-		else if(ADDRESS_SCHEME == "row_bank_vault_channel_col")
-		{
-			addressScheme = RowBankVaultChannelCol;
-		}
-		else if(ADDRESS_SCHEME == "bank_vault_channel_col_row")
-		{
-			addressScheme = BankVaultChannelColRow;
-		}
-		else if(ADDRESS_SCHEME == "bank_vault_col_channel_row")
-		{
-			addressScheme = BankVaultColChannelRow;
-		}
-		else if(ADDRESS_SCHEME == "bank_channel_vault_col_row")
-		{
-			addressScheme = BankChannelVaultColRow;
-		}
-		else if(ADDRESS_SCHEME == "default")
-		{
-			addressScheme = Default;
-		}
-		else
-		{
-			cout << "WARNING: unknown address policy '"<<ADDRESS_SCHEME<<"'; valid values are 'channel_vault_bank_row_col','col_row_bank_vault_channel', 'row_bank_vault_channel_col', and 'Default'. Defaulting to Default \n";
-			addressScheme = Default;
-		}
-    }
-
-#if 0
-    // Wrote it, but did not use it -- might be handy in the future
-    void Init::Trim(string &str) 
-    {
-	size_t begin,end;
-	if ((begin = str.find_first_not_of(" ")) == string::npos) {
-	    begin = 0;
-	}
-	if ((end = str.find_last_not_of(" ")) == string::npos) 
-	{
-	    end = str.size()-1;
-	}
-	str = str.substr(begin,end-begin+1);
-    }
-#endif
-
 }

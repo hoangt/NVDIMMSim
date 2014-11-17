@@ -42,38 +42,40 @@
 using namespace NVDSim;
 using namespace std;
 
-Die::Die(NVDIMM *parent, Logger *l, uint64_t idNum){
+Die::Die(Configuration &nv_cfg, NVDIMM *parent, Logger *l, uint64_t idNum) :
+	cfg(nv_cfg)
+{
 	id = idNum;
 	parentNVDIMM = parent;
 	log = l;
 
 	sending = false;
 
-	planes = vector<Plane>(PLANES_PER_DIE, Plane());
+	planes = vector<Plane>(cfg.PLANES_PER_DIE, Plane(cfg));
 
-	currentCommands = vector<ChannelPacket *>(PLANES_PER_DIE, NULL);
-	pausedCommands = vector<ChannelPacket *>(PLANES_PER_DIE, NULL);
+	currentCommands = vector<ChannelPacket *>(cfg.PLANES_PER_DIE, NULL);
+	pausedCommands = vector<ChannelPacket *>(cfg.PLANES_PER_DIE, NULL);
 
 	dataCyclesLeft = 0;
 	deviceBeatsLeft = 0;
-	controlCyclesLeft = new uint64_t[PLANES_PER_DIE];
-	pausedCyclesLeft = new uint64_t[PLANES_PER_DIE];
-	writeIterationCyclesLeft = new uint64_t[PLANES_PER_DIE];
+	controlCyclesLeft = new uint64_t[cfg.PLANES_PER_DIE];
+	pausedCyclesLeft = new uint64_t[cfg.PLANES_PER_DIE];
+	writeIterationCyclesLeft = new uint64_t[cfg.PLANES_PER_DIE];
 
 	currentClockCycle = 0;
 
-	critBeat = ((divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH)-divide_params_64b((uint64_t)512,DEVICE_WIDTH)) * DEVICE_CYCLE) / CYCLE_TIME; // cache line is 64 bytes
+	critBeat = ((divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_WIDTH)-divide_params_64b((uint64_t)512,cfg.DEVICE_WIDTH)) * cfg.DEVICE_CYCLE) / cfg.CYCLE_TIME; // cache line is 64 bytes
 
-	if(REFRESH_ENABLE)
+	if(cfg.REFRESH_ENABLE)
 	{
 		// only need a plane refresh pointer
 		plane_rpointer = 0;
-		refreshing = vector<bool>(PLANES_PER_DIE, 0);
-		refresh_blocked = vector<bool>(PLANES_PER_DIE, 0);		
+		refreshing = vector<bool>(cfg.PLANES_PER_DIE, 0);
+		refresh_blocked = vector<bool>(cfg.PLANES_PER_DIE, 0);		
 	}
 	
 	// this stores the page number of the open row in the bank
-	open_row = vector<uint64_t>(PLANES_PER_DIE, BLOCKS_PER_PLANE+1);
+	open_row = vector<uint64_t>(cfg.PLANES_PER_DIE, cfg.BLOCKS_PER_PLANE+1);
 }
 
 void Die::attachToBuffer(Buffer *buff){
@@ -89,12 +91,12 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 		if(busPacket->busPacketType != AUTO_REFRESH)
 		{
 			currentCommands[busPacket->plane] = busPacket;
-			if (LOGGING)
+			if (cfg.LOGGING)
 			{
 				// Tell the logger the access has now been processed.		        
 				log->access_process(busPacket->virtualAddress, busPacket->physicalAddress, busPacket->package, busPacket->busPacketType);
 				
-				if(CONCURRENCY_LOG)
+				if(cfg.CONCURRENCY_LOG)
 				{
 					log->used_something(busPacket->package, busPacket->die, busPacket->plane, busPacket->block);
 				}
@@ -104,10 +106,10 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			case READ:
 		        case GC_READ:
 					planes[busPacket->plane].read(busPacket);
-					if(busPacket->block == open_row[busPacket->plane] && OPEN_ROW_ENABLE)
+					if(busPacket->block == open_row[busPacket->plane] && cfg.OPEN_ROW_ENABLE)
 					{
 						controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
-						if(LOGGING)
+						if(cfg.LOGGING)
 						{
 							log->row_hit();
 						}
@@ -118,7 +120,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 						open_row[busPacket->plane] = busPacket->block;
 					}
 				// log the new state of this plane
-				if(LOGGING && PLANE_STATE_LOG)
+				if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
 				{
 				    if(busPacket->busPacketType == READ)
 				    {
@@ -134,10 +136,10 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			case GC_WRITE:
 			        planes[busPacket->plane].write(busPacket);
 					parentNVDIMM->numWrites++;	
-					if(busPacket->block == open_row[busPacket->plane] && OPEN_ROW_ENABLE)
+					if(busPacket->block == open_row[busPacket->plane] && cfg.OPEN_ROW_ENABLE)
 					{
 						controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
-						if(LOGGING)
+						if(cfg.LOGGING)
 						{
 							log->row_hit();
 						}
@@ -147,10 +149,10 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 						controlCyclesLeft[busPacket->plane]= WRITE_CYCLES;
 						open_row[busPacket->plane] = busPacket->block;						
 					}
-					writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
+					writeIterationCyclesLeft[busPacket->plane] = cfg.WRITE_ITERATION_CYCLES;
 
 				// log the new state of this plane
-				if(LOGGING && PLANE_STATE_LOG)
+				if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
 				{
 				    if(busPacket->busPacketType == WRITE)
 				    {
@@ -165,20 +167,20 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 		        case SET_WRITE:
 			    	planes[busPacket->plane].write(busPacket);
 				parentNVDIMM->numWrites++;			
-				controlCyclesLeft[busPacket->plane]= ERASE_TIME;
-				writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
+				controlCyclesLeft[busPacket->plane]= cfg.ERASE_TIME;
+				writeIterationCyclesLeft[busPacket->plane] = cfg.WRITE_ITERATION_CYCLES;
 				// log the new state of this plane
-				if(LOGGING && PLANE_STATE_LOG)
+				if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
 				{
 				    log->log_plane_state(busPacket->virtualAddress, busPacket->package, busPacket->die, busPacket->plane, WRITING);
 				}
 				break;
 			 case PRESET_WRITE:
 			        parentNVDIMM->numErases++;
-				controlCyclesLeft[busPacket->plane]= ERASE_TIME;
-				writeIterationCyclesLeft[busPacket->plane] = WRITE_ITERATION_CYCLES;
+				controlCyclesLeft[busPacket->plane]= cfg.ERASE_TIME;
+				writeIterationCyclesLeft[busPacket->plane] = cfg.WRITE_ITERATION_CYCLES;
 				// log the new state of this plane
-				if(LOGGING && PLANE_STATE_LOG)
+				if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
 				{
 				    log->log_plane_state(busPacket->virtualAddress, busPacket->package, busPacket->die, busPacket->plane, ERASING);
 				}
@@ -189,7 +191,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			        controlCyclesLeft[busPacket->plane]= ERASE_CYCLES;
 
 				// log the new state of this plane
-				if(LOGGING && PLANE_STATE_LOG)
+				if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
 				{
 				    log->log_plane_state(busPacket->virtualAddress, busPacket->package, busPacket->die, busPacket->plane, ERASING);
 				}
@@ -214,7 +216,7 @@ int Die::isDieBusy(uint64_t plane){
     // not doing anything right now
     // if we're sending, then we're buffering and the channel between the buffer and the die
     // is busy and data can't be sent to the die right now
-	if(RW_INTERLEAVE_ENABLE)
+	if(cfg.RW_INTERLEAVE_ENABLE)
 	{
 		if (currentCommands[plane] == NULL && sending == false){
 			if(planes[plane].checkCacheReg() == true && planes[plane].checkDataReg() == true)
@@ -273,7 +275,7 @@ int Die::isDieBusy(uint64_t plane){
 
 void Die::testDieRefresh(uint64_t plane, uint64_t block, bool write)
 {
-	if(LOGGING && REFRESH_ENABLE && refreshing[plane] == true && !refresh_blocked[plane])
+	if(cfg.LOGGING && cfg.REFRESH_ENABLE && refreshing[plane] == true && !refresh_blocked[plane])
 	{
 		log->refresh_blocked(write, controlCyclesLeft[plane]);
 		refresh_blocked[plane] = true;
@@ -282,15 +284,15 @@ void Die::testDieRefresh(uint64_t plane, uint64_t block, bool write)
 
 bool Die::canDieRefresh()
 {
-	if(refreshLevel == PerVault || refreshLevel == PerChannel)
+	if(cfg.refreshLevel == PerVault || cfg.refreshLevel == PerChannel)
 	{
 		uint64_t free_count = 0;
-		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		for(uint64_t p = 0; p < cfg.PLANES_PER_DIE; p++)
 		{
 			if(currentCommands[p] == NULL)
 				free_count++;
 		}
-		if(free_count == PLANES_PER_DIE)
+		if(free_count == cfg.PLANES_PER_DIE)
 		{
 			return true;
 		}
@@ -316,7 +318,7 @@ void Die::update(void){
 	uint64_t i;
 	ChannelPacket *currentCommand;
 
-	for (i = 0 ; i < PLANES_PER_DIE ; i++){
+	for (i = 0 ; i < cfg.PLANES_PER_DIE ; i++){
 	    bool no_reg_room = false; // is there a spare reg for the read data, if not we must wait
 		currentCommand = currentCommands[i];
 		if (currentCommand != NULL){
@@ -325,7 +327,7 @@ void Die::update(void){
 				// Process each command based on the packet type.
 				switch (currentCommand->busPacketType){
 				case READ:
-					if(!RW_INTERLEAVE_ENABLE || planes[currentCommand->plane].checkCacheReg())
+					if(!cfg.RW_INTERLEAVE_ENABLE || planes[currentCommand->plane].checkCacheReg())
 					{
 						returnDataPackets.push(planes[currentCommand->plane].readFromData());
 						no_reg_room = false;
@@ -336,7 +338,7 @@ void Die::update(void){
 					}
 					break;
 				case GC_READ:
-					if(!RW_INTERLEAVE_ENABLE || planes[currentCommand->plane].checkCacheReg())
+					if(!cfg.RW_INTERLEAVE_ENABLE || planes[currentCommand->plane].checkCacheReg())
 					{
 						returnDataPackets.push(planes[currentCommand->plane].readFromData());
 						parentNVDIMM->GCReadDone(currentCommand->virtualAddress);
@@ -379,10 +381,10 @@ void Die::update(void){
 					// For DATA, this is handled as part of the WRITE in Plane.
 
 					// Tell the logger the access is done.
-					if (LOGGING)
+					if (cfg.LOGGING)
 					{
 					    log->access_stop(currentCommand->virtualAddress, currentCommand->physicalAddress);
-					    if(PLANE_STATE_LOG)
+					    if(cfg.PLANE_STATE_LOG)
 					    {
 						log->log_plane_state(currentCommand->virtualAddress, currentCommand->package, currentCommand->die, currentCommand->plane, IDLE);
 					    }
@@ -419,7 +421,7 @@ void Die::update(void){
 				// if we're done with this iteration, reset
 				if(writeIterationCyclesLeft[i] <= 0)
 				{
-				    writeIterationCyclesLeft[i] = WRITE_ITERATION_CYCLES;
+				    writeIterationCyclesLeft[i] = cfg.WRITE_ITERATION_CYCLES;
 				}
 				writeIterationCyclesLeft[i]--;
 			    } 
@@ -429,15 +431,15 @@ void Die::update(void){
 
 	if (!returnDataPackets.empty())
 	{
-	    if( BUFFERED == true)
+	    if( cfg.BUFFERED == true)
 	    {
 		// is there a read waiting for us and are we not doing something already
 		if(deviceBeatsLeft == 0 && sending == false && 		
 		   (buffer->dataReady(returnDataPackets.front()->die, returnDataPackets.front()->plane) == false ||
 		    currentCommands[returnDataPackets.front()->plane] != NULL))
 		{
-		    dataCyclesLeft = divide_params_64b(DEVICE_CYCLE,CYCLE_TIME);
-		    deviceBeatsLeft = divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH);
+		    dataCyclesLeft = divide_params_64b(cfg.DEVICE_CYCLE,cfg.CYCLE_TIME);
+		    deviceBeatsLeft = divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_WIDTH);
 		    sending = true;
 		}
 		    
@@ -447,7 +449,7 @@ void Die::update(void){
 		    if(success == true)
 		    {
 			deviceBeatsLeft--;
-			dataCyclesLeft = divide_params_64b(DEVICE_CYCLE,CYCLE_TIME);
+			dataCyclesLeft = divide_params_64b(cfg.DEVICE_CYCLE,cfg.CYCLE_TIME);
 		    }
 		    else
 		    {
@@ -463,7 +465,7 @@ void Die::update(void){
 	    else
 	    {
 			Channel* channel_pointer;
-			if(DEVICE_DATA_CHANNEL)
+			if(cfg.DEVICE_DATA_CHANNEL)
 			{
 				channel_pointer = buffer->data_channel;
 			}
@@ -474,7 +476,7 @@ void Die::update(void){
 			if(channel_pointer->hasChannel(BUFFER, id)){
 				if(dataCyclesLeft == 0)
 				{
-					if(LOGGING && PLANE_STATE_LOG)
+					if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
 					{
 						log->log_plane_state(returnDataPackets.front()->virtualAddress, 
 											 returnDataPackets.front()->package, 
@@ -487,29 +489,29 @@ void Die::update(void){
 					channel_pointer->releaseChannel(BUFFER, id);		
 					returnDataPackets.pop();
 				}
-				if(CRIT_LINE_FIRST && dataCyclesLeft == critBeat)
+				if(cfg.CRIT_LINE_FIRST && dataCyclesLeft == critBeat)
 				{
 					channel_pointer->controller->returnCritLine(returnDataPackets.front());
 				}
 				dataCyclesLeft--;
 			}else{
 				// is there a read waiting for us and are we not doing something already
-				if(!RW_INTERLEAVE_ENABLE || channel_pointer->controller->dataReady(returnDataPackets.front()->package, returnDataPackets.front()->die, returnDataPackets.front()->plane) == 0 ||
+				if(!cfg.RW_INTERLEAVE_ENABLE || channel_pointer->controller->dataReady(returnDataPackets.front()->package, returnDataPackets.front()->die, returnDataPackets.front()->plane) == 0 ||
 				   currentCommands[returnDataPackets.front()->plane] != NULL)
 				{
 					if(channel_pointer->obtainChannel(id, BUFFER, NULL))
 					{
-						if(DEVICE_DATA_CHANNEL)
+						if(cfg.DEVICE_DATA_CHANNEL)
 						{
-							dataCyclesLeft = divide_params_64b(divide_params_64b((NV_PAGE_SIZE*8),DEVICE_DATA_WIDTH) * DEVICE_CYCLE, CYCLE_TIME);
+							dataCyclesLeft = divide_params_64b(divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_DATA_WIDTH) * cfg.DEVICE_CYCLE, cfg.CYCLE_TIME);
 						}
 						else
 						{
-							dataCyclesLeft = divide_params_64b(divide_params_64b((NV_PAGE_SIZE*8),DEVICE_WIDTH) * DEVICE_CYCLE, CYCLE_TIME);
+							dataCyclesLeft = divide_params_64b(divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_WIDTH) * cfg.DEVICE_CYCLE, cfg.CYCLE_TIME);
 						}
 
 						// bus turn around timing addition
-						if(CHANNEL_TURN_ENABLE && !channel_pointer->lastOwner(BUFFER))
+						if(cfg.CHANNEL_TURN_ENABLE && !channel_pointer->lastOwner(BUFFER))
 						{
 							dataCyclesLeft += CHANNEL_TURN_CYCLES;
 						}
@@ -537,7 +539,7 @@ void Die::bufferDone(uint64_t plane)
 void Die::bufferLoaded()
 {
     pendingDataPackets.push(returnDataPackets.front());
-    if(LOGGING && PLANE_STATE_LOG)
+    if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
     {
 	log->log_plane_state(returnDataPackets.front()->virtualAddress, returnDataPackets.front()->package, returnDataPackets.front()->die, returnDataPackets.front()->plane, IDLE);
     }
@@ -548,7 +550,7 @@ void Die::bufferLoaded()
 
 void Die::critLineDone()
 {
-    if(CRIT_LINE_FIRST)
+    if(cfg.CRIT_LINE_FIRST)
     {
 	buffer->channel->controller->returnCritLine(returnDataPackets.front());
     }
@@ -642,7 +644,7 @@ bool Die::writeCancel(uint64_t plane)
 		{
 		  
 		  // have to reset the logger for this write
-		  if (LOGGING)
+		  if (cfg.LOGGING)
 		  {
 		      log->access_cancel(currentCommands[plane]->virtualAddress, currentCommands[plane]->physicalAddress);
 		  }
@@ -701,9 +703,9 @@ bool Die::isCurrentPAddr(uint64_t plane, uint64_t block, uint64_t physAddr)
 
 void Die::addRefreshes(ChannelPacket *packet)
 {
-	if(refreshLevel == PerVault || refreshLevel == PerChannel)
+	if(cfg.refreshLevel == PerVault || cfg.refreshLevel == PerChannel)
 	{
-		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		for(uint64_t p = 0; p < cfg.PLANES_PER_DIE; p++)
 		{
 			ChannelPacket *new_packet = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, p, packet->die, packet->package, NULL);
 			currentCommands[p] = new_packet;
@@ -731,7 +733,7 @@ void Die::updateRefreshPointer()
 {
 	//this only matters if we're just refreshing one bank at a time
 	plane_rpointer++;
-	if(plane_rpointer >= PLANES_PER_DIE)
+	if(plane_rpointer >= cfg.PLANES_PER_DIE)
 	{
 		plane_rpointer = 0;
 	}

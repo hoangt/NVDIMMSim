@@ -46,7 +46,7 @@ namespace NVDSim
     class P8PGCLogger: public GCLogger
     {
     public:
-	P8PGCLogger();
+	P8PGCLogger(Configuration &nv_cfg);
 	
 	void save(uint64_t cycle, uint64_t epoch);
 	void print(uint64_t cycle);
@@ -110,44 +110,6 @@ namespace NVDSim
 	    std::vector<double> vpp_idle_energy;
 	    std::vector<double> vpp_access_energy;
 	    std::vector<double> vpp_erase_energy;
-
-	    EpochEntry()
-	    {
-		num_accesses = 0;
-		num_reads = 0;
-		num_writes = 0;
-		num_erases = 0;
-		num_gcreads = 0;
-		num_gcwrites = 0;
-
-		num_unmapped = 0;
-		num_mapped = 0;
-
-		num_read_unmapped = 0;
-		num_read_mapped = 0;
-		num_write_unmapped = 0;
-		num_write_mapped = 0;
-		
-		average_latency = 0;
-		average_read_latency = 0;
-		average_write_latency = 0;
-		average_erase_latency = 0;
-		average_queue_latency = 0;
-		average_gcread_latency = 0;
-		average_gcwrite_latency = 0;
-
-		ftl_queue_length = 0;
-		gc_queue_length = 0;
-		ctrl_queue_length = std::vector<std::vector<uint64_t> >(NUM_PACKAGES, std::vector<uint64_t>(DIES_PER_PACKAGE, 0));
-
-		idle_energy = std::vector<double>(NUM_PACKAGES, 0.0); 
-		access_energy = std::vector<double>(NUM_PACKAGES, 0.0); 
-		erase_energy = std::vector<double>(NUM_PACKAGES, 0.0);
-
-		vpp_idle_energy = std::vector<double>(NUM_PACKAGES, 0.0); 
-		vpp_access_energy = std::vector<double>(NUM_PACKAGES, 0.0); 
-		vpp_erase_energy = std::vector<double>(NUM_PACKAGES, 0.0); 
-	    }
 	};
 
 	// Store system snapshot from last epoch to compute this epoch

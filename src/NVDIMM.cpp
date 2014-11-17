@@ -40,65 +40,39 @@
 
 using namespace std;
 
-//uint64_t BLOCKS_PER_PLANE;
-
 namespace NVDSim
 {
-    NVDIMM::NVDIMM(uint64_t id, string deviceFile, string sysFile, string pwd, string trc) :
-	dev(deviceFile),
-	sys(sysFile),
+    NVDIMM::NVDIMM(uint64_t id, string iniFile, string pwd, string trc) :
+	ini(iniFile),
 	cDirectory(pwd)
     {
 	uint64_t i, j;
 	systemID = id;
-	
-	 if (cDirectory.length() > 0)
-	 {
-		 //ignore the pwd argument if the argument is an absolute path
-		 if (dev[0] != '/')
-		 {
-		 dev = pwd + "/" + dev;
-		 }
-		 
-		if (sys[0] != '/')
-		 {
-		 sys = pwd + "/" + sys;
-		 }
-	}
-	Init::ReadIniFile(dev, false);
-	//Init::ReadIniFile(sys, true);
 
-	 if (!Init::CheckIfAllSet())
-	 {
-		 exit(-1);
-	 }
-
-	Init::EnumsFromWearLevelStrings();
-	Init::EnumsFromRefreshStrings();
-	Init::EnumsFromAddressStrings();
+	cfg = Init::read(ini);
 	
 	// this is where the overprovisioning happens
-	if(wearLevelingScheme == StartGap)
+	if(cfg.wearLevelingScheme == StartGap)
 	{
 	    // we need an extra page(block) for the gap in start gap
 	    // we don't use the overprovisioning factor here cause start gap doesn't have a way to use
 	    // the extra blocks
 	    // we take care of that in Ftl.cpp
-	    BLOCKS_PER_PLANE = (uint64_t)(VIRTUAL_BLOCKS_PER_PLANE);
+	    cfg.BLOCKS_PER_PLANE = (uint64_t)(cfg.VIRTUAL_BLOCKS_PER_PLANE);
 	}
 	else
 	{
-	    BLOCKS_PER_PLANE = (uint64_t)(VIRTUAL_BLOCKS_PER_PLANE * PBLOCKS_PER_VBLOCK);
+	    cfg.BLOCKS_PER_PLANE = (uint64_t)(cfg.VIRTUAL_BLOCKS_PER_PLANE * cfg.PBLOCKS_PER_VBLOCK);
 	}
 
-	if(LOGGING == 1)
+	if(cfg.LOGGING == 1)
 	{
 	    PRINT("Logs are being generated");
 	}else{
 	    PRINT("Logs are not being generated");
 	}
 	PRINT("\nDevice Information:\n");
-	PRINT("Device Type: "<<DEVICE_TYPE);
+	PRINT("Device Type: "<<cfg.DEVICE_TYPE);
 	uint64_t bits_per_GB = (uint64_t)(1024*8192)*(1024);
 	PRINT("Size (GB): "<<TOTAL_SIZE/bits_per_GB);
 	PRINT("Block Size: "<<BLOCK_SIZE);
@@ -106,22 +80,22 @@ namespace NVDSim
 	PRINT("Die Size: "<<DIE_SIZE);
 	PRINT("Package Size: "<<PACKAGE_SIZE);
 	PRINT("Total Size (KB): "<<TOTAL_SIZE);
-	PRINT("Packages/Channels: "<<NUM_PACKAGES);
-	PRINT("Page size: "<<NV_PAGE_SIZE);
-	if(GARBAGE_COLLECT == 1)
+	PRINT("Packages/Channels: "<<cfg.NUM_PACKAGES);
+	PRINT("Page size: "<<cfg.NV_PAGE_SIZE);
+	if(cfg.GARBAGE_COLLECT == 1)
 	{
 	  PRINT("Device is using garbage collection");
 	}else{
 	  PRINT("Device is not using garbage collection");
 	}
-	if(BUFFERED == 1 || FRONT_BUFFER == 1)
+	if(cfg.BUFFERED == 1 || cfg.FRONT_BUFFER == 1)
 	{
 	  PRINT("Memory is using a buffer between the channel and dies");
 	}else{
 	  PRINT("Memory channels are directly connected to dies");
 	}
 	
-	switch(wearLevelingScheme)
+	switch(cfg.wearLevelingScheme)
 	{
 	case RoundRobin:
 	    PRINT("Memory is using a round robin wear leveling scheme");
@@ -136,127 +110,127 @@ namespace NVDSim
 	    break;
 	}
 
-	if(wearLevelingScheme == StartGap && PAGES_PER_BLOCK != 1)
+	if(cfg.wearLevelingScheme == StartGap && cfg.PAGES_PER_BLOCK != 1)
 	{
 	    PRINT("WARNING: PCM blocks should consist of just 1 page but that is not the case here");
 	}
 	
 	PRINT("\nTiming Info:\n");
-	PRINT("Read time: "<<READ_TIME);
-	PRINT("Write Time: "<<WRITE_TIME);
-	PRINT("Erase time: "<<ERASE_TIME);
-	PRINT("Channel latency for data: "<<CHANNEL_CYCLE);
-	PRINT("Channel width for data: "<<CHANNEL_WIDTH);
-	PRINT("Device latency for data: "<<DEVICE_CYCLE);
-	PRINT("Device width for data: "<<DEVICE_WIDTH)
+	PRINT("Read time: "<<cfg.READ_TIME);
+	PRINT("Write Time: "<<cfg.WRITE_TIME);
+	PRINT("Erase time: "<<cfg.ERASE_TIME);
+	PRINT("Channel latency for data: "<<cfg.CHANNEL_CYCLE);
+	PRINT("Channel width for data: "<<cfg.CHANNEL_WIDTH);
+	PRINT("Device latency for data: "<<cfg.DEVICE_CYCLE);
+	PRINT("Device width for data: "<<cfg.DEVICE_WIDTH)
 	if(USE_EPOCHS == 1)
 	{
 	    PRINT("Device is using epoch data logging");
 	}
-	PRINT("Epoch Time: "<<EPOCH_CYCLES);
+	PRINT("Epoch Time: "<<cfg.EPOCH_CYCLES);
 	PRINT("");
 	
 	
-	if((GARBAGE_COLLECT == 0) && (DEVICE_TYPE.compare("NAND") == 0 || DEVICE_TYPE.compare("NOR") == 0))
+	if((cfg.GARBAGE_COLLECT == 0) && (cfg.DEVICE_TYPE.compare("NAND") == 0 || cfg.DEVICE_TYPE.compare("NOR") == 0))
 	{
 	  ERROR("Device is Flash and must use garbage collection");
 	  exit(-1);
 	}
 
-	if(DEVICE_TYPE.compare("P8P") == 0)
+	if(cfg.DEVICE_TYPE.compare("P8P") == 0)
 	  {
-	    if(ASYNC_READ_I == 0.0)
+	    if(cfg.ASYNC_READ_I == 0.0)
 	      {
 		WARNING("No asynchronous read current supplied, using 0.0");
 	      }
-	    else if(VPP_STANDBY_I == 0.0)
+	    else if(cfg.VPP_STANDBY_I == 0.0)
 	       {
 		PRINT("VPP standby current data missing for P8P, using 0.0");
 	      }
-	    else if(VPP_READ_I == 0.0)
+	    else if(cfg.VPP_READ_I == 0.0)
 	      {
 		PRINT("VPP read current data missing for P8P, using 0.0");
 	      }
-	    else if(VPP_WRITE_I == 0.0)
+	    else if(cfg.VPP_WRITE_I == 0.0)
 	       {
 		PRINT("VPP write current data missing for P8P, using 0.0");
 	      }
-	    else if(VPP_ERASE_I == 0.0)
+	    else if(cfg.VPP_ERASE_I == 0.0)
 	       {
 		PRINT("VPP erase current data missing for P8P, using 0.0");
 	      }
-	    else if(VPP == 0.0)
+	    else if(cfg.VPP == 0.0)
 	      {
 		PRINT("VPP power data missing for P8P, using 0.0");
 	      }
 	  }
 		
-	if(DEVICE_TYPE.compare("P8P") == 0 && GARBAGE_COLLECT == 1)
+	if(cfg.DEVICE_TYPE.compare("P8P") == 0 && cfg.GARBAGE_COLLECT == 1)
 	{
 	    // if we're not logging we probably shouldn't even initialize the logger
-	    if(LOGGING)
+	    if(cfg.LOGGING)
 	    {
-		log = new P8PGCLogger();
+		log = new P8PGCLogger(cfg);
 	    }
 	    else
 	    {
 		log = NULL;
 	    }
-	    controller= new Controller(this, log);
-	    ftl = new GCFtl(controller, log, this);
+	    controller= new Controller(cfg, this, log);
+	    ftl = new GCFtl(cfg, controller, log, this);
 	}
-	else if(DEVICE_TYPE.compare("P8P") == 0 && GARBAGE_COLLECT == 0)
+	else if(cfg.DEVICE_TYPE.compare("P8P") == 0 && cfg.GARBAGE_COLLECT == 0)
 	{
-	    if(LOGGING)
+	    if(cfg.LOGGING)
 	    {
-		log = new P8PLogger();
+		log = new P8PLogger(cfg);
 	    }
 	    else
 	    {
 		log = NULL;
 	    }
-	    controller= new Controller(this, log);
-	    ftl = new Ftl(controller, log, this);
+	    controller= new Controller(cfg, this, log);
+	    ftl = new Ftl(cfg, controller, log, this);
 	}
-	else if(GARBAGE_COLLECT == 1)
+	else if(cfg.GARBAGE_COLLECT == 1)
 	{
-	    if(LOGGING)
+	    if(cfg.LOGGING)
 	    {
-		log = new GCLogger();
+		log = new GCLogger(cfg);
 	    }
 	    else
 	    {
 		log = NULL;
 	    }
-	    controller= new Controller(this, log);
-	    ftl = new GCFtl(controller, log, this);
+	    controller= new Controller(cfg, this, log);
+	    ftl = new GCFtl(cfg, controller, log, this);
 	}
 	else
 	{
-	    if(LOGGING)
+	    if(cfg.LOGGING)
 	    {
-		log = new Logger();
+		log = new Logger(cfg);
 	    }
 	    else
 	    {
 		log = NULL;
 	    }
-	    controller= new Controller(this, log);
-	    ftl = new Ftl(controller, log, this);
+	    controller= new Controller(cfg, this, log);
+	    ftl = new Ftl(cfg, controller, log, this);
 	}
 	packages= new vector<Package>();
 
-	if (DIES_PER_PACKAGE > INT_MAX){
+	if (cfg.DIES_PER_PACKAGE > INT_MAX){
 		ERROR("Too many dies.");
 		exit(1);
 	}
 
 	// sanity checks
 	
-	if(DEVICE_DATA_CHANNEL)
+	if(cfg.DEVICE_DATA_CHANNEL)
 	{
-		for (i= 0; i < NUM_PACKAGES; i++){
-			Package pack = {new Channel(i), new Channel(i), new Buffer(i), vector<Die *>()};
+		for (i= 0; i < cfg.NUM_PACKAGES; i++){
+			Package pack = {new Channel(cfg, i), new Channel(cfg, i), new Buffer(cfg, i), vector<Die *>()};
 			//pack.channel= new Channel();
 			pack.channel->attachController(controller);
 			pack.channel->attachBuffer(pack.buffer);
@@ -264,8 +238,8 @@ namespace NVDSim
 			pack.data_channel->attachController(controller);
 			pack.data_channel->attachBuffer(pack.buffer);
 			pack.buffer->attachDataChannel(pack.data_channel);
-			for (j= 0; j < DIES_PER_PACKAGE; j++){
-				Die *die= new Die(this, log, j);
+			for (j= 0; j < cfg.DIES_PER_PACKAGE; j++){
+				Die *die= new Die(cfg, this, log, j);
 				die->attachToBuffer(pack.buffer);
 				pack.buffer->attachDie(die);
 				pack.dies.push_back(die);
@@ -275,14 +249,14 @@ namespace NVDSim
 	}
 	else
 	{
-		for (i= 0; i < NUM_PACKAGES; i++){
-			Package pack = {new Channel(i), NULL, new Buffer(i), vector<Die *>()};
+		for (i= 0; i < cfg.NUM_PACKAGES; i++){
+			Package pack = {new Channel(cfg, i), NULL, new Buffer(cfg, i), vector<Die *>()};
 			//pack.channel= new Channel();
 			pack.channel->attachController(controller);
 			pack.channel->attachBuffer(pack.buffer);
 			pack.buffer->attachChannel(pack.channel);
-			for (j= 0; j < DIES_PER_PACKAGE; j++){
-				Die *die= new Die(this, log, j);
+			for (j= 0; j < cfg.DIES_PER_PACKAGE; j++){
+				Die *die= new Die(cfg, this, log, j);
 				die->attachToBuffer(pack.buffer);
 				pack.buffer->attachDie(die);
 				pack.dies.push_back(die);
@@ -292,7 +266,7 @@ namespace NVDSim
 	}
 	controller->attachPackages(packages);
 
-	frontBuffer = new FrontBuffer(this, ftl);
+	frontBuffer = new FrontBuffer(cfg, this, ftl);
 	controller->attachFrontBuffer(frontBuffer);
 
 	ReturnReadData= NULL;
@@ -305,19 +279,19 @@ namespace NVDSim
 	numWrites= 0;
 	numErases= 0;
 	currentClockCycle= 0;
-	cycles_left = new uint64_t [NUM_PACKAGES];
-	for(uint64_t h = 0; h < NUM_PACKAGES; h++){
+	cycles_left = new uint64_t [cfg.NUM_PACKAGES];
+	for(uint64_t h = 0; h < cfg.NUM_PACKAGES; h++){
 	    cycles_left[h] = 0;
 	}
 	// the channel and buffers are running faster than the other parts of the system
-	/*if(CYCLE_TIME > CHANNEL_CYCLE)
+	/*if(cfg.CYCLE_TIME > cfg.CHANNEL_CYCLE)
 	{
-	    channel_cycles_per_cycle = (uint64_t)(((float)CYCLE_TIME / (float)CHANNEL_CYCLE) + 0.50f);
+	    channel_cycles_per_cycle = (uint64_t)(((float)cfg.CYCLE_TIME / (float)cfg.CHANNEL_CYCLE) + 0.50f);
 	    faster_channel = true;
 	}
-	else if(CYCLE_TIME <= CHANNEL_CYCLE)
+	else if(cfg.CYCLE_TIME <= cfg.CHANNEL_CYCLE)
 	{
-	    channel_cycles_per_cycle = (uint64_t)(((float)CHANNEL_CYCLE / (float)CYCLE_TIME) + 0.50f);
+	    channel_cycles_per_cycle = (uint64_t)(((float)cfg.CHANNEL_CYCLE / (float)cfg.CYCLE_TIME) + 0.50f);
 	    faster_channel = false;
 	}
 	cout << "the faster cycles computed was: " << channel_cycles_per_cycle << " \n";*/
@@ -327,9 +301,9 @@ namespace NVDSim
 	nv_clock_counter1 = 0.0;
 	nv_clock_counter2 = 0.0;
 	controller_clock_counter = 0.0;
-	nv_clock_counter3 = new float [NUM_PACKAGES];
-	channel_clock_counter = new float [NUM_PACKAGES];
-	for(uint64_t c = 0; c < NUM_PACKAGES; c++){
+	nv_clock_counter3 = new float [cfg.NUM_PACKAGES];
+	channel_clock_counter = new float [cfg.NUM_PACKAGES];
+	for(uint64_t c = 0; c < cfg.NUM_PACKAGES; c++){
 	    nv_clock_counter3[c] = 0.0;
 	    channel_clock_counter[c] = 0.0;
 	}
@@ -337,16 +311,29 @@ namespace NVDSim
 	ftl->loadNVState();
 	
 	ftl->preDirty();
+
+	channels = cfg.NUM_PACKAGES;
+	dies_per_package = cfg.DIES_PER_PACKAGE;
+	planes_per_die = cfg.PLANES_PER_DIE;
+	blocks_per_plane = cfg.BLOCKS_PER_PLANE;
+	pages_per_block = cfg.PAGES_PER_BLOCK;
+	page_size = cfg.NV_PAGE_SIZE;
     }
 
 // static allocator for the library interface
-    NVDIMM *getNVDIMMInstance(uint64_t id, string deviceFile, string sysFile, string pwd, string trc)
+    NVDIMM *getNVDIMMInstance(uint64_t id, string iniFile, string pwd, string trc)
     {
-	return new NVDIMM(id, deviceFile, sysFile, pwd, trc);
+	return new NVDIMM(id, iniFile, pwd, trc);
+    }
+
+// outdated static allocator for the library interface to preserve backwards compatability
+    NVDIMM *getNVDIMMInstance(uint64_t id, string iniFile, string unused, string pwd, string trc)
+    {
+	return new NVDIMM(id, iniFile, pwd, trc);
     }
 
     bool NVDIMM::add(FlashTransaction &trans){
-	if(FRONT_BUFFER)
+	if(cfg.FRONT_BUFFER)
 	{
 	    return frontBuffer->addTransaction(trans);
 	}
@@ -359,7 +346,7 @@ namespace NVDSim
     bool NVDIMM::addTransaction(bool isWrite, uint64_t addr){
 	TransactionType type = isWrite ? DATA_WRITE : DATA_READ;
 	FlashTransaction trans = FlashTransaction(type, addr, NULL);
-	if(FRONT_BUFFER)
+	if(cfg.FRONT_BUFFER)
 	{
 	    return frontBuffer->addTransaction(trans);
 	}
@@ -389,14 +376,14 @@ namespace NVDSim
     }
 
     void NVDIMM::printStats(void){
-	if(LOGGING == true)
+	if(cfg.LOGGING == true)
 	{
 	    log->print(currentClockCycle);
 	}
     }
 
     void NVDIMM::saveStats(void){
-	if(LOGGING == true)
+	if(cfg.LOGGING == true)
 	{
 	    log->save(currentClockCycle, epoch_count);
 	}
@@ -409,22 +396,22 @@ namespace NVDSim
 	Package package;
 
 	//update the system clock counters
-	system_clock_counter += SYSTEM_CYCLE;
+	system_clock_counter += cfg.SYSTEM_CYCLE;
 
 	while(nv_clock_counter1 < system_clock_counter)
 	{
-	    nv_clock_counter1 += CYCLE_TIME;
+	    nv_clock_counter1 += cfg.CYCLE_TIME;
 
 	    //cout << "updating ftl \n";
 	    ftl->update();
 	    ftl->step();
 	    
-	    if(BUFFERED)
+	    if(cfg.BUFFERED)
 	    {
-		nv_clock_counter2 += CYCLE_TIME;
+		nv_clock_counter2 += cfg.CYCLE_TIME;
 		while(controller_clock_counter < nv_clock_counter2)
 		{
-		    controller_clock_counter += CHANNEL_CYCLE;
+		    controller_clock_counter += cfg.CHANNEL_CYCLE;
 		    controller->update();
 		    controller->step();
 		}
@@ -457,12 +444,12 @@ namespace NVDSim
 		}
 		*/
 	    }
-	    else if(FRONT_BUFFER)
+	    else if(cfg.FRONT_BUFFER)
 	    {
-		nv_clock_counter2 += CYCLE_TIME;
+		nv_clock_counter2 += cfg.CYCLE_TIME;
 		while(controller_clock_counter < nv_clock_counter2)
 		{
-		    controller_clock_counter += CHANNEL_CYCLE;
+		    controller_clock_counter += cfg.CHANNEL_CYCLE;
 		    frontBuffer->update();
 		    frontBuffer->step();
 		}
@@ -484,12 +471,12 @@ namespace NVDSim
 	
 	    for (i= 0; i < packages->size(); i++){
 		package= (*packages)[i];
-		if(BUFFERED)
+		if(cfg.BUFFERED)
 		{
-		    nv_clock_counter3[i] += CYCLE_TIME;
+		    nv_clock_counter3[i] += cfg.CYCLE_TIME;
 		    while(channel_clock_counter[i] < nv_clock_counter3[i])
 		    {
-			channel_clock_counter[i] += CHANNEL_CYCLE;
+			channel_clock_counter[i] += cfg.CHANNEL_CYCLE;
 			package.channel->update();
 			package.buffer->update();
 		    }
@@ -532,7 +519,7 @@ namespace NVDSim
 		}
 	    }
 
-	    if(LOGGING == true)
+	    if(cfg.LOGGING == true)
 	    {
 		log->update();
 	    }
@@ -544,9 +531,9 @@ namespace NVDSim
 	    {
 		ftl->sendQueueLength();
 		controller->sendQueueLength();
-		if(epoch_cycles >= EPOCH_CYCLES)
+		if(epoch_cycles >= cfg.EPOCH_CYCLES)
 		{
-		    if(LOGGING == true)
+		    if(cfg.LOGGING == true)
 		    {
 			log->save_epoch(currentClockCycle, epoch_count);
 			log->ftlQueueReset();
@@ -578,16 +565,16 @@ namespace NVDSim
 //If either of these methods are called it is because HybridSim called them
 //therefore the appropriate system setting should be set
     void NVDIMM::saveNVState(string filename){
-	ENABLE_NV_SAVE = 1;
-	NV_SAVE_FILE = filename;
+	cfg.ENABLE_NV_SAVE = 1;
+	cfg.NV_SAVE_FILE = filename;
 	cout << "got to save state in nvdimm \n";
-	cout << "save file was " << NV_SAVE_FILE << "\n";
+	cout << "save file was " << cfg.NV_SAVE_FILE << "\n";
 	ftl->saveNVState();
     }
 
     void NVDIMM::loadNVState(string filename){
-	ENABLE_NV_RESTORE = 1;
-	NV_RESTORE_FILE = filename;
+	cfg.ENABLE_NV_RESTORE = 1;
+	cfg.NV_RESTORE_FILE = filename;
 	ftl->loadNVState();
     }
 

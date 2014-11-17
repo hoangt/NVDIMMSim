@@ -51,7 +51,7 @@ namespace NVDSim{
         class NVDIMM;
 	class GCFtl : public Ftl{
 		public:
-	                GCFtl(Controller *c, Logger *l, NVDIMM *p);
+	                GCFtl(Configuration &nv_cfg, Controller *c, Logger *l, NVDIMM *p);
 			bool addTransaction(FlashTransaction &t);
 			void addGcTransaction(FlashTransaction &t);
 			void update(void);

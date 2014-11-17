@@ -40,7 +40,9 @@
 
 using namespace NVDSim;
 
-Channel::Channel(uint64_t i){
+Channel::Channel(Configuration &nv_cfg, uint64_t i) :
+	cfg(nv_cfg)
+{
         id = i;
 	sender = ULLONG_MAX;
 	busy = 0;
@@ -76,18 +78,18 @@ int Channel::obtainChannel(uint64_t s, SenderType t, ChannelPacket *p){
 	{
 		int dieBusy = buffer->dies[p->die]->isDieBusy(p->plane); 
 		//cout << "dieBusy returned " << dieBusy << "\n";
-		if((!BUFFERED && (dieBusy == 1)) ||
+		if((!cfg.BUFFERED && (dieBusy == 1)) ||
 		   // die is writing and there is no room in the cache register so just wait
-		   (!BUFFERED && (dieBusy == 6)) ||
+		   (!cfg.BUFFERED && (dieBusy == 6)) ||
 		   // should allow us to send write data to a buffer that is currently writing
-		   (!BUFFERED && p->busPacketType != DATA && dieBusy == 2) ||
+		   (!cfg.BUFFERED && p->busPacketType != DATA && dieBusy == 2) ||
 		   // should allow us to send a write command to a plane that has a loaded cache register
-		   (!BUFFERED && p->busPacketType == DATA && (dieBusy == 3 || dieBusy == 5)) ||
+		   (!cfg.BUFFERED && p->busPacketType == DATA && (dieBusy == 3 || dieBusy == 5)) ||
 		   // should keep us from sending a read command to a plane that has a loaded data register
-		   (!BUFFERED && (p->busPacketType == READ || p->busPacketType == GC_READ) && 
+		   (!cfg.BUFFERED && (p->busPacketType == READ || p->busPacketType == GC_READ) && 
 			(dieBusy == 3 ||
 			 (dieBusy == 4))) ||
-		   (REFRESH_ENABLE && p->busPacketType == AUTO_REFRESH && !buffer->dies[p->die]->canDieRefresh()) ||
+		   (cfg.REFRESH_ENABLE && p->busPacketType == AUTO_REFRESH && !buffer->dies[p->die]->canDieRefresh()) ||
 		   (busy == 1))
 			{
 				return 0;		

@@ -39,35 +39,38 @@
 
 using namespace NVDSim;
 
-FrontBuffer::FrontBuffer(NVDIMM* parent, Ftl* f){
-    parentNVDIMM = parent;
-    sender = -1;
-    ftl = f;
+FrontBuffer::FrontBuffer(Configuration &nv_cfg, NVDIMM* parent, Ftl* f) :
+	cfg(nv_cfg)
+{
 
-    // transaction queues, separate command queue not needed because commands
-    // always accompany requests
-    requests = queue<FlashTransaction>();
-    responses = queue<FlashTransaction>();
-    commands = queue<FlashTransaction>();
-
-    // usage of buffer space
-    requestsSize = 0;
-    responsesSize = 0;
-    
-    // transaction currently being serviced by each potential channel
-    requestTrans = FlashTransaction();
-    responseTrans = FlashTransaction();
-    commandTrans = FlashTransaction();
-    
-    // queue of transactions that have been finished by command or data channels but
-    // still waiting on the other channel in a split channel setup
-    pendingData = vector<FlashTransaction>();
-    pendingCommand = vector<FlashTransaction>();
-
-    // channel progress counters
-    requestCyclesLeft = 0;
-    responseCyclesLeft = 0;
-    commandCyclesLeft = 0;
+	parentNVDIMM = parent;
+	sender = -1;
+	ftl = f;
+	
+	// transaction queues, separate command queue not needed because commands
+	// always accompany requests
+	requests = queue<FlashTransaction>();
+	responses = queue<FlashTransaction>();
+	commands = queue<FlashTransaction>();
+	
+	// usage of buffer space
+	requestsSize = 0;
+	responsesSize = 0;
+	
+	// transaction currently being serviced by each potential channel
+	requestTrans = FlashTransaction();
+	responseTrans = FlashTransaction();
+	commandTrans = FlashTransaction();
+	
+	// queue of transactions that have been finished by command or data channels but
+	// still waiting on the other channel in a split channel setup
+	pendingData = vector<FlashTransaction>();
+	pendingCommand = vector<FlashTransaction>();
+	
+	// channel progress counters
+	requestCyclesLeft = 0;
+	responseCyclesLeft = 0;
+	commandCyclesLeft = 0;
 }
 
 // place the transaction in the appropriate queue
@@ -78,14 +81,14 @@ bool FrontBuffer::addTransaction(FlashTransaction transaction){
     case BLOCK_ERASE:
     case PRESET_PAGE:
     case TRIM:
-	if(requestsSize <= (REQUEST_BUFFER_SIZE - COMMAND_LENGTH))
+	if(requestsSize <= (cfg.REQUEST_BUFFER_SIZE - cfg.COMMAND_LENGTH))
 	{
 	    requests.push(transaction);
-	    if(ENABLE_COMMAND_CHANNEL)
+	    if(cfg.ENABLE_COMMAND_CHANNEL)
 	    {
 		commands.push(transaction);
 	    }
-	    requestsSize += COMMAND_LENGTH;
+	    requestsSize += cfg.COMMAND_LENGTH;
 	    return true;
 	}
 	else
@@ -93,14 +96,14 @@ bool FrontBuffer::addTransaction(FlashTransaction transaction){
 	    return false;
 	}
     case DATA_WRITE:
-	if(requestsSize <= (REQUEST_BUFFER_SIZE - (COMMAND_LENGTH + (NV_PAGE_SIZE*8))))
+	if(requestsSize <= (cfg.REQUEST_BUFFER_SIZE - (cfg.COMMAND_LENGTH + (cfg.NV_PAGE_SIZE*8))))
 	{
 	    requests.push(transaction);
-	    if(ENABLE_COMMAND_CHANNEL)
+	    if(cfg.ENABLE_COMMAND_CHANNEL)
 	    {
 		commands.push(transaction);
 	    }
-	    requestsSize += (COMMAND_LENGTH + (NV_PAGE_SIZE*8));
+	    requestsSize += (cfg.COMMAND_LENGTH + (cfg.NV_PAGE_SIZE*8));
 	    return true;
 	}
 	else
@@ -108,10 +111,10 @@ bool FrontBuffer::addTransaction(FlashTransaction transaction){
 	    return false;
 	}
     case RETURN_DATA:
-	if(responsesSize <= (RESPONSE_BUFFER_SIZE - (NV_PAGE_SIZE*8)))
+	if(responsesSize <= (cfg.RESPONSE_BUFFER_SIZE - (cfg.NV_PAGE_SIZE*8)))
 	{
 	    responses.push(transaction);
-	    responsesSize += (NV_PAGE_SIZE*8);
+	    responsesSize += (cfg.NV_PAGE_SIZE*8);
 	    return true;
 	}
 	else
@@ -138,20 +141,20 @@ void FrontBuffer::update(void){
     {
 	responseTrans = responses.front();
 	responses.pop();
-	responsesSize = subtract_params(responsesSize, (NV_PAGE_SIZE*8));
+	responsesSize = subtract_params(responsesSize, (cfg.NV_PAGE_SIZE*8));
 	updateResponse();
     }
     // half duplex case, requests also use the response channel
     // we need to do this even if there is a command channel because there
     // may be write data to send (read cases are handled by the updateResponse function)
-    else if(!ENABLE_REQUEST_CHANNEL && !requests.empty())
+    else if(!cfg.ENABLE_REQUEST_CHANNEL && !requests.empty())
     {
 	responseTrans = newRequestTrans();
 	updateResponse();
     }
 
     // full duplex case, requests use dedicated request channel
-    if(ENABLE_REQUEST_CHANNEL)
+    if(cfg.ENABLE_REQUEST_CHANNEL)
     {
 	// channel already doing something, keep doing it
 	if(requestTrans.transactionType != EMPTY)
@@ -168,7 +171,7 @@ void FrontBuffer::update(void){
     }
 
     // separate command channel
-    if(ENABLE_COMMAND_CHANNEL)
+    if(cfg.ENABLE_COMMAND_CHANNEL)
     {
 	// channel already doing something, keep doing it
 	if(commandTrans.transactionType != EMPTY)
@@ -179,7 +182,7 @@ void FrontBuffer::update(void){
 	{
 	    commandTrans = commands.front();
 	    commands.pop();
-	    requestsSize = subtract_params(requestsSize, COMMAND_LENGTH);
+	    requestsSize = subtract_params(requestsSize, cfg.COMMAND_LENGTH);
 	    updateCommand();
 	}
     }
@@ -188,13 +191,13 @@ void FrontBuffer::update(void){
 // creates a new request transaction
 FlashTransaction FrontBuffer::newRequestTrans(void){
     FlashTransaction new_requestTrans = requests.front();
-    if(!ENABLE_COMMAND_CHANNEL)
+    if(!cfg.ENABLE_COMMAND_CHANNEL)
     {
-	requestsSize = subtract_params(requestsSize, (COMMAND_LENGTH + (NV_PAGE_SIZE*8)));
+	requestsSize = subtract_params(requestsSize, (cfg.COMMAND_LENGTH + (cfg.NV_PAGE_SIZE*8)));
     }
     else
     {
-	requestsSize = subtract_params(requestsSize, (NV_PAGE_SIZE*8));
+	requestsSize = subtract_params(requestsSize, (cfg.NV_PAGE_SIZE*8));
     }
     requests.pop();
     return new_requestTrans;
@@ -209,13 +212,13 @@ void FrontBuffer::updateResponse(void){
 	{
 	    // number of channel cycles to go equals the total number of data bits divided by the bits 
 	    // moved per channel cycle
-	    responseCyclesLeft = divide_params_64b((NV_PAGE_SIZE*8), CHANNEL_WIDTH);
+	    responseCyclesLeft = divide_params_64b((cfg.NV_PAGE_SIZE*8), cfg.CHANNEL_WIDTH);
 	}
 	// no request channel to handle request data and commands so we need to handle those cases
-	else if(!ENABLE_REQUEST_CHANNEL)
+	else if(!cfg.ENABLE_REQUEST_CHANNEL)
 	{
 	    // function handles determining the right number of cycles to delay by
-	    responseCyclesLeft = setDataCycles(responseTrans, CHANNEL_WIDTH);
+	    responseCyclesLeft = setDataCycles(responseTrans, cfg.CHANNEL_WIDTH);
 	}
 	else
 	{
@@ -241,7 +244,7 @@ void FrontBuffer::updateResponse(void){
 	    responseTrans = FlashTransaction();
 	}
 	else{
-	    if(ENABLE_COMMAND_CHANNEL)
+	    if(cfg.ENABLE_COMMAND_CHANNEL)
 	    {
 		responseTrans = findTransaction(&pendingData, &pendingCommand, responseTrans);
 	    }
@@ -266,7 +269,7 @@ void FrontBuffer::updateRequest(void){
     if(requestCyclesLeft == 0 && requestTrans.transactionType != EMPTY)
     {
 	// function handles determining the right number of cycles to delay by
-	requestCyclesLeft = setDataCycles(requestTrans, REQUEST_CHANNEL_WIDTH);
+	requestCyclesLeft = setDataCycles(requestTrans, cfg.REQUEST_CHANNEL_WIDTH);
     }
     
     // we're updating so data has moved
@@ -279,7 +282,7 @@ void FrontBuffer::updateRequest(void){
 	// just to make sure we precisely tigger the first if statement
 	requestCyclesLeft = 0;
 	
-	if(ENABLE_COMMAND_CHANNEL)
+	if(cfg.ENABLE_COMMAND_CHANNEL)
 	{
 	    requestTrans = findTransaction(&pendingData, &pendingCommand, requestTrans);
 	}
@@ -302,7 +305,7 @@ void FrontBuffer::updateCommand(void){
     // need to figure out how many cycles we need to move the command to the FTL
     if(commandCyclesLeft == 0 && commandTrans.transactionType != EMPTY)
     {
-	commandCyclesLeft = divide_params_64b(COMMAND_LENGTH, COMMAND_CHANNEL_WIDTH);
+	commandCyclesLeft = divide_params_64b(cfg.COMMAND_LENGTH, cfg.COMMAND_CHANNEL_WIDTH);
     }
 
     // we're updating so command bits have moved
@@ -323,11 +326,11 @@ uint64_t FrontBuffer::setDataCycles(FlashTransaction transaction, uint64_t width
     if(transaction.transactionType == DATA_READ || transaction.transactionType == BLOCK_ERASE || transaction.transactionType == PRESET_PAGE || 
        transaction.transactionType == TRIM)
     {
-	if(!ENABLE_COMMAND_CHANNEL)
+	if(!cfg.ENABLE_COMMAND_CHANNEL)
 	{
 	    // number of channel cycles to go equals the total number of command bits
 	    // divided by the bits moved per channel cycle
-	    return divide_params_64b(COMMAND_LENGTH, width);
+	    return divide_params_64b(cfg.COMMAND_LENGTH, width);
 	}
 	// command channel is handling the read command so do nothing
 	// set to one so that the decrement doesn't break things
@@ -338,17 +341,17 @@ uint64_t FrontBuffer::setDataCycles(FlashTransaction transaction, uint64_t width
     }
     else if(transaction.transactionType == DATA_WRITE)
     {
-	if(!ENABLE_COMMAND_CHANNEL)
+	if(!cfg.ENABLE_COMMAND_CHANNEL)
 	{
 	    // number of channel cycles to go equals the total number of data bits plus the number of command bits
 	    // divided by the bits moved per channel cycle
-	    return divide_params_64b(((NV_PAGE_SIZE*8)+COMMAND_LENGTH), width);
+	    return divide_params_64b(((cfg.NV_PAGE_SIZE*8)+cfg.COMMAND_LENGTH), width);
 	}
 	else
 	{
 	    // number of channel cycles to go equals the total number of data bits divided by the bits 
 	    // moved per channel cycle
-	    return divide_params_64b((NV_PAGE_SIZE*8), width);
+	    return divide_params_64b((cfg.NV_PAGE_SIZE*8), width);
 	}
     }
     ERROR("Something bad happened in setDataCycles");

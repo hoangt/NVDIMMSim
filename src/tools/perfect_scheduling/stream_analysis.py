@@ -38,12 +38,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # capacity parameters
-NUM_PACKAGES = 32
-DIES_PER_PACKAGE = 2
-PLANES_PER_DIE = 1
-BLOCKS_PER_PLANE = 32
-PAGES_PER_BLOCK = 48
-NV_PAGE_SIZE=32768 # in bits
+cfg.NUM_PACKAGES = 32
+cfg.DIES_PER_PACKAGE = 2
+cfg.PLANES_PER_DIE = 1
+cfg.BLOCKS_PER_PLANE = 32
+cfg.PAGES_PER_BLOCK = 48
+cfg.NV_PAGE_SIZE=32768 # in bits
 
 file_out = 0
 write_arrive = 0
@@ -159,8 +159,8 @@ epoch_reads = [0 for k in range(epoch_total)]
 epoch_writes_arrived = [0 for k in range(epoch_total)]
 epoch_reads_arrived = [0 for k in range(epoch_total)]
 
-pp_epoch_writes = [[[[0 for x in range(epoch_total)] for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
-pp_epoch_reads = [[[[0 for x in range(epoch_total)] for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
+pp_epoch_writes = [[[[0 for x in range(epoch_total)] for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
+pp_epoch_reads = [[[[0 for x in range(epoch_total)] for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
 
 write_pointer = 0
 read_pointer = 0
@@ -269,9 +269,9 @@ plt.savefig(actual_image_out)
 print per_plane
 if per_plane == 1:
 	count = 1
-	for i in range(NUM_PACKAGES):
-		for j in range(DIES_PER_PACKAGE):
-			for k in range(PLANES_PER_DIE):
+	for i in range(cfg.NUM_PACKAGES):
+		for j in range(cfg.DIES_PER_PACKAGE):
+			for k in range(cfg.PLANES_PER_DIE):
 				plt.figure(count)
 				plt.plot(epoch_list, pp_epoch_reads[i][j][k], label = "Reads")
 				plt.plot(epoch_list, pp_epoch_writes[i][j][k], label = "Writes")

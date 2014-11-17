@@ -37,18 +37,18 @@ import sys
 import math
 
 # capacity parameters
-NUM_PACKAGES = 32
-DIES_PER_PACKAGE = 4
-PLANES_PER_DIE = 1
-BLOCKS_PER_PLANE = 32
-PAGES_PER_BLOCK = 48
-NV_PAGE_SIZE=32768 # in bits
+cfg.NUM_PACKAGES = 32
+cfg.DIES_PER_PACKAGE = 4
+cfg.PLANES_PER_DIE = 1
+cfg.BLOCKS_PER_PLANE = 32
+cfg.PAGES_PER_BLOCK = 48
+cfg.NV_PAGE_SIZE=32768 # in bits
 
 # timing parameters
-DEVICE_CYCLE = 2.5
-CHANNEL_CYCLE = 0.15
-DEVICE_WIDTH = 8
-CHANNEL_WIDTH = 8
+cfg.DEVICE_CYCLE = 2.5
+cfg.CHANNEL_CYCLE = 0.15
+cfg.DEVICE_WIDTH = 8
+cfg.CHANNEL_WIDTH = 8
 
 # get the log files
 write_log = open(sys.argv[1], 'r')

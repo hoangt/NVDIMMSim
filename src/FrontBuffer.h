@@ -38,6 +38,7 @@
 
 #include "SimObj.h"
 #include "FlashConfiguration.h"
+#include "Init.h"
 #include "FlashTransaction.h"
 #include "Ftl.h"
 #include "Util.h"
@@ -46,7 +47,7 @@ namespace NVDSim{
 	class NVDIMM;
 	class FrontBuffer : public SimObj{
 		public:
-	                FrontBuffer(NVDIMM* parent, Ftl *f);
+	                FrontBuffer(Configuration &nv_cfg, NVDIMM* parent, Ftl *f);
 
 			bool addTransaction(FlashTransaction transaction);		        		
 
@@ -76,7 +77,8 @@ namespace NVDSim{
 
 			// called after return delay
 			void sendToHybrid(const FlashTransaction &transaction);
-			
+	
+			Configuration &cfg;		
 			Ftl *ftl;
 			NVDIMM *parentNVDIMM;
 

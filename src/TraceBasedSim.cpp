@@ -47,7 +47,7 @@
 #include <time.h>
 #include "TraceBasedSim.h"
 
-#define NUM_WRITES 1000
+#define NUM_WRITES 10000
 #define SIM_CYCLES 10000000
 
 /*temporary assignments for externed variables.
@@ -57,24 +57,19 @@
  * values from a samsung flash dimm:
  * */
 
-/*uint NUM_PACKAGES= 1;
-uint DIES_PER_PACKAGE= 2;
-uint PLANES_PER_DIE= 4;
-uint BLOCKS_PER_PLANE= 2048;
-uint PAGES_PER_BLOCK= 64;
+/*uint cfg.NUM_PACKAGES= 1;
+uint cfg.DIES_PER_PACKAGE= 2;
+uint cfg.PLANES_PER_DIE= 4;
+uint cfg.BLOCKS_PER_PLANE= 2048;
+uint cfg.PAGES_PER_BLOCK= 64;
 uint FLASH_PAGE_SIZE= 4;
 
-uint READ_TIME= 25;
-uint WRITE_TIME= 200;
-uint ERASE_TIME= 1500;
+uint cfg.READ_TIME= 25;
+uint cfg.WRITE_TIME= 200;
+uint cfg.ERASE_TIME= 1500;
 uint DATA_TIME= 100;
 uint COMMAND_TIME= 10;
 */
-
-namespace NVDSim
-{
-	bool OUTPUT= 1;
-}
 
 using namespace NVDSim;
 using namespace std;
@@ -99,32 +94,8 @@ void test_obj::write_cb(uint64_t id, uint64_t address, uint64_t cycle, bool mapp
 
 void test_obj::power_cb(uint64_t id, vector<vector<double>> data, uint64_t cycle, bool mapped){
         cout<<"[Callback] Power Data for cycle: "<<cycle<<endl;
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++){
+	for(uint64_t i = 0; i < 1; i++){
 	  for(uint64_t j = 0; j < data.size(); j++){
-	    if(DEVICE_TYPE.compare("PCM") == 0){
-	      if(j == 0){
-		cout<<"    Package: "<<i<<" Idle Energy: "<<data[0][i]<<"\n";
-	      }else if(j == 1){
-		cout<<"    Package: "<<i<<" Access Energy: "<<data[1][i]<<"\n";
-	      }
-	      if(GARBAGE_COLLECT == 1){
-		if(j == 2){
-		  cout<<"    Package: "<<i<<" Erase Energy: "<<data[2][i]<<"\n";
-		}else if(j == 3){
-		  cout<<"    Package: "<<i<<" VPP Idle Energy: "<<data[3][i]<<"\n";
-		}else if(j == 4){
-		  cout<<"    Package: "<<i<<" VPP Access Energy: "<<data[4][i]<<"\n";
-		}else if(j == 5){
-		  cout<<"    Package: "<<i<<" VPP Erase Energy: "<<data[5][i]<<"\n";
-		}
-	      }else{
-		if(j == 2){
-		  cout<<"    Package: "<<i<<" VPP Idle Energy: "<<data[2][i]<<"\n";
-		}else if(j == 3){
-		  cout<<"    Package: "<<i<<" VPP Access Energy: "<<data[3][i]<<"\n";
-		}
-	      }
-	    }else{
 	      if(j == 0){
 		cout<<"    Package: "<<i<<" Idle Energy: "<<data[0][i]<<"\n";
 	      }else if(j == 1){
@@ -133,14 +104,13 @@ void test_obj::power_cb(uint64_t id, vector<vector<double>> data, uint64_t cycle
 		cout<<"    Package: "<<i<<" Erase Energy: "<<data[2][i]<<"\n";
 	      }
 	    }
-	  }
 	}
 }
 
 void test_obj::run_test(void){
 	clock_t start= clock(), end;
 	uint64_t cycle;
-	NVDIMM *NVDimm= new NVDIMM(1,"ini/samsung_K9XXG08UXM_gc_test.ini","ini/def_system.ini","","");
+	NVDIMM *NVDimm= new NVDIMM(1,"ini/samsung_K9XXG08UXM_gc_test.ini","","");
 	//NVDIMM *NVDimm= new NVDIMM(1,"ini/PCM_TEST.ini","ini/def_system.ini","","");
 	typedef CallbackBase<void,uint64_t,uint64_t,uint64_t,bool> Callback_t;
 	Callback_t *r = new Callback<test_obj, void, uint64_t, uint64_t, uint64_t, bool>(this, &test_obj::read_cb);
@@ -166,16 +136,16 @@ void test_obj::run_test(void){
 	
 	for (cycle= 0; cycle<SIM_CYCLES; cycle++){
 	  if(!waiting){
-	      t = FlashTransaction(DATA_WRITE, write_addr, (void *)0xdeadbeef);
+		  //t = FlashTransaction(DATA_WRITE, write_addr, (void *)0xdeadbeef);
+		  //result = (*NVDimm).add(t);
+	      t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
 	      result = (*NVDimm).add(t);
-	      //t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
-	      //result = (*NVDimm).add(t);
 	      
 	      if(result == 1)
 	      {
 		  writes++;
-		  write_addr = write_addr + NV_PAGE_SIZE;
-		  if(write_addr >= (17*NV_PAGE_SIZE))
+		  write_addr = write_addr + NVDimm->cfg.NV_PAGE_SIZE;
+		  if(write_addr >= (17*NVDimm->cfg.NV_PAGE_SIZE))
 		  {
 		      write_addr = 0;
 		  }
@@ -196,8 +166,8 @@ void test_obj::run_test(void){
 	  {
 	      //t = FlashTransaction(PRESET_PAGE, write_addr, (void *)0xdeadbeef);
 	      //result = (*NVDimm).add(t);
-	      //cout << "Read address is " << write_addr-NV_PAGE_SIZE << "\n";
-	      t = FlashTransaction(DATA_READ, write_addr-(2*NV_PAGE_SIZE), (void *)0xdeadbeef);
+	      //cout << "Read address is " << write_addr-cfg.NV_PAGE_SIZE << "\n";
+	      t = FlashTransaction(DATA_READ, write_addr-(2*NVDimm->cfg.NV_PAGE_SIZE), (void *)0xdeadbeef);
 	      result = (*NVDimm).add(t);
 	  }
 

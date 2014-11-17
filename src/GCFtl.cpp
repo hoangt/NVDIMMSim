@@ -42,8 +42,8 @@
 using namespace NVDSim;
 using namespace std;
 
-GCFtl::GCFtl(Controller *c, Logger *l, NVDIMM *p) 
-    : Ftl(c, l, p)
+GCFtl::GCFtl(Configuration &nv_cfg, Controller *c, Logger *l, NVDIMM *p) 
+	: Ftl(nv_cfg, c, l, p)
 {	
 	gc_status = 0;
 	panic_mode = 0;
@@ -61,14 +61,14 @@ bool GCFtl::addTransaction(FlashTransaction &t){
 	{
 	    // we are going to favor reads over writes
 	    // so writes get put into a special lower prioirty queue
-	    if(FTL_QUEUE_HANDLING)
+	    if(cfg.FTL_QUEUE_HANDLING)
 	    {
 		return checkQueueAddTransaction(t);
 	    }
 	    // no scheduling, so just shove everything into the read queue
 	    else
 	    {
-		return attemptAdd(t, &transQueue, FTL_QUEUE_LENGTH);
+		return attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
 	    }
 	}
 	return false;
@@ -82,7 +82,7 @@ void GCFtl::addGcTransaction(FlashTransaction &t){
     gcQueue.push_back(t);
     ctrl_write_queues_full = false;
     
-    if(LOGGING == true)
+    if(cfg.LOGGING == true)
     {
 	// Start the logging for this access.
 	log->access_start(t.address);
@@ -94,25 +94,25 @@ void GCFtl::update(void){
 	if (gc_status){
 		if (!panic_mode && parent->numErases == start_erase + 1)
 			gc_status = 0;
-		if (panic_mode && parent->numErases == start_erase + PLANES_PER_DIE * DIES_PER_PACKAGE * NUM_PACKAGES){
+		if (panic_mode && parent->numErases == start_erase + cfg.PLANES_PER_DIE * cfg.DIES_PER_PACKAGE * cfg.NUM_PACKAGES){
 			panic_mode = 0;
 			gc_status = 0;
 		}
 	}
 
-	if (!gc_status && (float)dirty_page_count >= (float)(FORCE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE))){
+	if (!gc_status && (float)dirty_page_count >= (float)(cfg.FORCE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / cfg.NV_PAGE_SIZE))){
 	    if(dirty_page_count != 0)
 	    {
 		start_erase = parent->numErases;
 		gc_status = 1;
 		panic_mode = 1;
 		busy = 0;
-		for (i = 0 ; i < PLANES_PER_DIE * DIES_PER_PACKAGE * NUM_PACKAGES; i++)
+		for (i = 0 ; i < cfg.PLANES_PER_DIE * cfg.DIES_PER_PACKAGE * cfg.NUM_PACKAGES; i++)
 		{
 			runGC(i);
 		}
 	    }
-	    else if((float)used_page_count >= (float)(VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE))
+	    else if((float)used_page_count >= (float)(VIRTUAL_TOTAL_SIZE / cfg.NV_PAGE_SIZE))
 	    {
 		ERROR("FLASH DIMM IS FULL OF USED PAGES AND NONE OF THEM ARE DIRTY - there is nothing the gc can do.");
 		exit(7001);
@@ -155,7 +155,7 @@ void GCFtl::update(void){
 					if(result == true)
 					{
 					    cout << "ERASED \n";
-					    for (i = 0 ; i < PAGES_PER_BLOCK ; i++){
+					    for (i = 0 ; i < cfg.PAGES_PER_BLOCK ; i++){
 						if (dirty[vAddr / BLOCK_SIZE][i]){
 							dirty[vAddr / BLOCK_SIZE][i] = false;
 							dirty_page_count--;
@@ -255,13 +255,13 @@ void GCFtl::write_used_handler(uint64_t vAddr)
 {
     // when using the GC, we won't mark something as unused until it has been erased in order to prevent unerased things
     // from being written to accidentally
-        dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / NV_PAGE_SIZE) % PAGES_PER_BLOCK] = true;
+        dirty[addressMap[vAddr] / BLOCK_SIZE][(addressMap[vAddr] / cfg.NV_PAGE_SIZE) % cfg.PAGES_PER_BLOCK] = true;
 	dirty_page_count ++;
 }
 
 bool GCFtl::checkGC(void){
 	// Return true if more than 70% of blocks are dirty and false otherwise.
-        if ((float)dirty_page_count > ((float)IDLE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / NV_PAGE_SIZE)))
+        if ((float)dirty_page_count > ((float)cfg.IDLE_GC_THRESHOLD * (VIRTUAL_TOTAL_SIZE / cfg.NV_PAGE_SIZE)))
 		return true;
 	return false;
 }
@@ -275,7 +275,7 @@ void GCFtl::runGC() {
 	// Get the dirtiest block (assumes the flash keeps track of this with an online algorithm).
 	for (block = erase_pointer; block < TOTAL_SIZE / BLOCK_SIZE; block++) {
 	  count = 0;
-	  for (page = 0; page < PAGES_PER_BLOCK; page++) {
+	  for (page = 0; page < cfg.PAGES_PER_BLOCK; page++) {
 		if (dirty[block][page] == true) {
 			count++;
 		}
@@ -300,9 +300,9 @@ void GCFtl::runGC(uint64_t plane) {
 	PendingErase temp_erase;
 
 	// Get the dirtiest block (assumes the flash keeps track of this with an online algorithm).
-	for (block = (plane * BLOCKS_PER_PLANE); block < ((plane + 1) * BLOCKS_PER_PLANE); block++) {
+	for (block = (plane * cfg.BLOCKS_PER_PLANE); block < ((plane + 1) * cfg.BLOCKS_PER_PLANE); block++) {
 	  count = 0;
-	  for (page = 0; page < PAGES_PER_BLOCK; page++) {
+	  for (page = 0; page < cfg.PAGES_PER_BLOCK; page++) {
 		if (dirty[block][page] == true) {
 			count++;
 		}
@@ -328,10 +328,10 @@ void GCFtl::addGC(uint64_t dirty_block)
      temp_erase.erase_block = dirty_block;
 
      // All used pages in the dirty block, they must be moved elsewhere.
-     for (page = 0; page < PAGES_PER_BLOCK; page++) {
+     for (page = 0; page < cfg.PAGES_PER_BLOCK; page++) {
 	 if (used[dirty_block][page] == true && dirty[dirty_block][page] == false) {
 	     // Compute the physical address to move.
-	     pAddr = (dirty_block * BLOCK_SIZE + page * NV_PAGE_SIZE);
+	     pAddr = (dirty_block * BLOCK_SIZE + page * cfg.NV_PAGE_SIZE);
 
 	     // Do a reverse lookup for the virtual page address.
 	     // This is slow, but the alternative is maintaining a full reverse lookup map.
@@ -368,7 +368,7 @@ void GCFtl::addGC(uint64_t dirty_block)
 
 void GCFtl::sendQueueLength(void)
 {
-	if(LOGGING == true)
+	if(cfg.LOGGING == true)
 	{
 	    log->ftlQueueLength(transQueue.size(), gcQueue.size());
 	}

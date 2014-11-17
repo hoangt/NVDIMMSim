@@ -33,7 +33,6 @@
 
 #include "Util.h"
 
-//mostly shamelessly stolen from HybridSim
 uint64_t convert_uint64_t(string value)
 {
 	// Check that each character in value is a digit.
@@ -53,6 +52,51 @@ uint64_t convert_uint64_t(string value)
 	ss >> var;
 
 	return var;
+}
+
+//mostly shamelessly stolen from HybridSim
+void convert_uint64_t(uint64_t &var, string value, string infostring)
+{
+	// Check that each character in value is a digit.
+	for(size_t i = 0; i < value.size(); i++)
+	{
+		if(!isdigit(value[i]))
+		{
+			cout << "ERROR: Non-digit character found: " << infostring << " : " << value << "\n";
+			abort();
+		}
+	}
+
+	// Convert it
+	stringstream ss;
+	ss << value;
+	ss >> var;
+}
+
+void convert_bool(bool &var, string value, string infostring)
+{
+	// Check that each character in value is a digit.
+	for(size_t i = 0; i < value.size(); i++)
+	{
+		if(!isdigit(value[i]))
+		{
+			cout << "ERROR: Non-digit character found: " << infostring << " : " << value << "\n";
+			abort();
+		}
+	}
+
+	// Convert it
+	stringstream ss;
+	ss << value;
+	ss >> var;
+}
+
+void convert_float(float &var, string value, string infostring)
+{
+	// Convert it
+	stringstream ss;
+	ss << value;
+	ss >> var;
 }
 
 //used to divide the ini parameters so that they don't result in a zero
@@ -200,4 +244,66 @@ uint64_t subtract_params(uint64_t a, uint64_t b)
     {
 	return (a - b);
     }
+}
+
+
+// parsing helper functions stolen shamelessly from Hybridsim
+string strip(string input, string chars)
+{
+	size_t pos;
+
+	// Strip front.
+	pos = input.find_first_not_of(chars);
+	input.erase(0, pos);
+
+	// Strip back.
+	pos = input.find_last_not_of(chars);
+	input.erase(pos+1);
+
+	return input;
+}
+
+
+list<string> split(string input, string chars, size_t maxsplit)
+{
+	list<string> ret;
+
+	string cur = input;
+
+	size_t pos = 0;
+
+	if (maxsplit == 0)
+		maxsplit = 1;
+
+	while (!cur.empty())
+	{
+		if (ret.size() == (maxsplit-1))
+		{
+			ret.push_back(cur);
+			return ret;
+		}
+
+		pos = cur.find_first_of(chars);
+		string tmp = cur.substr(0, pos);
+		ret.push_back(tmp);
+
+
+		if (pos == string::npos)
+			cur.erase();
+		else
+		{
+			// Skip ahead to the next non-split char
+			size_t new_pos = cur.find_first_not_of(chars, pos);
+			//cur.erase(0, pos+1);
+			cur.erase(0, new_pos);
+		}
+	}
+
+	// If not at npos, then there is still an extra empty string at the end.
+	if (pos != string::npos)
+	{
+		ret.push_back("");
+	}
+
+	return ret;
 }

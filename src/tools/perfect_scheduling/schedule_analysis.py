@@ -35,41 +35,41 @@ import sys
 import math
 
 # capacity parameters
-NUM_PACKAGES = 32
-DIES_PER_PACKAGE = 4
-PLANES_PER_DIE = 1
-BLOCKS_PER_PLANE = 32
-PAGES_PER_BLOCK = 48
-NV_PAGE_SIZE=32768 # in bits
+cfg.NUM_PACKAGES = 32
+cfg.DIES_PER_PACKAGE = 4
+cfg.PLANES_PER_DIE = 1
+cfg.BLOCKS_PER_PLANE = 32
+cfg.PAGES_PER_BLOCK = 48
+cfg.NV_PAGE_SIZE=32768 # in bits
 
 # timing parameters
-DEVICE_CYCLE = 2.5
-CHANNEL_CYCLE = 0.15
-DEVICE_WIDTH = 8
-CHANNEL_WIDTH = 8
+cfg.DEVICE_CYCLE = 2.5
+cfg.CHANNEL_CYCLE = 0.15
+cfg.DEVICE_WIDTH = 8
+cfg.CHANNEL_WIDTH = 8
 
 READ_CYCLES = 16678 # pretty sure I don't need this actually
 WRITE_CYCLES = 133420
 ERASE_CYCLES = 1000700
-COMMAND_LENGTH = 56
+cfg.COMMAND_LENGTH = 56
 
 # just for read analysis
 PCM_WRITE_CYCLES = 47020
 DRAM_WRITE_CYCLES = 90
 
-CYCLE_TIME = 1.51
+cfg.CYCLE_TIME = 1.51
 
 # derived parameters
 
-TOTAL_PLANES = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE
-CONCURRENCY = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * BLOCKS_PER_PLANE
-CAPACITY = NUM_PACKAGES * DIES_PER_PACKAGE * PLANES_PER_DIE * BLOCKS_PER_PLANE * PAGES_PER_BLOCK
+TOTAL_PLANES = cfg.NUM_PACKAGES * cfg.DIES_PER_PACKAGE * cfg.PLANES_PER_DIE
+CONCURRENCY = cfg.NUM_PACKAGES * cfg.DIES_PER_PACKAGE * cfg.PLANES_PER_DIE * cfg.BLOCKS_PER_PLANE
+CAPACITY = cfg.NUM_PACKAGES * cfg.DIES_PER_PACKAGE * cfg.PLANES_PER_DIE * cfg.BLOCKS_PER_PLANE * cfg.PAGES_PER_BLOCK
 
-CYCLES_PER_TRANSFER = NV_PAGE_SIZE / CHANNEL_WIDTH
+CYCLES_PER_TRANSFER = cfg.NV_PAGE_SIZE / cfg.CHANNEL_WIDTH
 
-READ_TIME = (READ_CYCLES + COMMAND_LENGTH) * CYCLE_TIME
-WRITE_TIME = (WRITE_CYCLES + COMMAND_LENGTH) * CYCLE_TIME
-ERASE_TIME = (ERASE_CYCLES + COMMAND_LENGTH) * CYCLE_TIME
+cfg.READ_TIME = (READ_CYCLES + cfg.COMMAND_LENGTH) * cfg.CYCLE_TIME
+cfg.WRITE_TIME = (WRITE_CYCLES + cfg.COMMAND_LENGTH) * cfg.CYCLE_TIME
+cfg.ERASE_TIME = (ERASE_CYCLES + cfg.COMMAND_LENGTH) * cfg.CYCLE_TIME
 
 # get the log files
 write_log = open(sys.argv[1], 'r')
@@ -110,10 +110,10 @@ write_data = []
 # analyzing reads only to find out the space between them
 if mode == 'Read':
 	# idle time records
-	shortest_time = READ_TIME * WRITE_TIME #just a big number
+	shortest_time = cfg.READ_TIME * cfg.WRITE_TIME #just a big number
 	longest_time = 0
 	average_time = 0
-	average_times = [[[0 for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
+	average_times = [[[0 for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
 	# read gap records
 	bigger_count = 0
 	open_count = 0
@@ -122,10 +122,10 @@ if mode == 'Read':
 	lookup_count = 0
 	one_count = 0
 	# potential write records
-	open_counts = [[[0 for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
-	last_read = [[[0 for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
-	idle = [[[0 for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
-	idle_counts = [[[0 for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
+	open_counts = [[[0 for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
+	last_read = [[[0 for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
+	idle = [[[0 for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
+	idle_counts = [[[0 for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
 	data_counter = 0
 
 	# get all the plane log data
@@ -187,9 +187,9 @@ if mode == 'Read':
 		data_counter =  data_counter + 1
 			
 	# add everything up for the total average across all planes		
-	for i in range(NUM_PACKAGES):
-		for j in range(DIES_PER_PACKAGE):
-			for k in range(PLANES_PER_DIE):	
+	for i in range(cfg.NUM_PACKAGES):
+		for j in range(cfg.DIES_PER_PACKAGE):
+			for k in range(cfg.PLANES_PER_DIE):	
 				if idle_counts[i][j][k] > 0:			
 					average_times[i][j][k] = average_times[i][j][k] / idle_counts[i][j][k]
 					average_time = average_time + average_times[i][j][k]
@@ -200,9 +200,9 @@ if mode == 'Read':
 	print 'shortest idle time', shortest_time
 	print 'longest idle time', longest_time
 	print 'average idle time', average_time
-	for i in range(NUM_PACKAGES):
-		for j in range(DIES_PER_PACKAGE):
-			for k in range(PLANES_PER_DIE):
+	for i in range(cfg.NUM_PACKAGES):
+		for j in range(cfg.DIES_PER_PACKAGE):
+			for k in range(cfg.PLANES_PER_DIE):
 				print 'average time for package', i, 'die', j, 'plane', k, 'is', average_times[i][j][k]
 	print 'number of idle times large enough for a write and then some', bigger_count
 	print 'number of idle times large enough for a write', open_count
@@ -210,9 +210,9 @@ if mode == 'Read':
 	print 'number of idle times less than a DRAM write', shorter_count
 	print 'number of idle times less than a lookup time', lookup_count
 	print 'number of idle times one 1 cycle long', one_count
-	for i in range(NUM_PACKAGES):
-		for j in range(DIES_PER_PACKAGE):
-			for k in range(PLANES_PER_DIE):
+	for i in range(cfg.NUM_PACKAGES):
+		for j in range(cfg.DIES_PER_PACKAGE):
+			for k in range(cfg.PLANES_PER_DIE):
 				print 'write sized gaps for package', i, 'die', j, 'plane', k, 'is', open_counts[i][j][k]
 
 	# save stuff to a file
@@ -236,9 +236,9 @@ if mode == 'Read':
 		output_file.write(s)
 		output_file.write('\n')	
 
-		for i in range(NUM_PACKAGES):
-			for j in range(DIES_PER_PACKAGE):
-				for k in range(PLANES_PER_DIE):
+		for i in range(cfg.NUM_PACKAGES):
+			for j in range(cfg.DIES_PER_PACKAGE):
+				for k in range(cfg.PLANES_PER_DIE):
 					output_file.write('average time for package ')
 					s =  str(i)
 					output_file.write(s)
@@ -276,9 +276,9 @@ if mode == 'Read':
 		s =  str(one_count)
 		output_file.write(s)
 		output_file.write('\n')
-		for i in range(NUM_PACKAGES):
-			for j in range(DIES_PER_PACKAGE):
-				for k in range(PLANES_PER_DIE):
+		for i in range(cfg.NUM_PACKAGES):
+			for j in range(cfg.DIES_PER_PACKAGE):
+				for k in range(cfg.PLANES_PER_DIE):
 					output_file.write('write sized gaps for package ')
 					s =  str(i)
 					output_file.write(s)
@@ -300,7 +300,7 @@ if mode == 'Read':
 elif mode == 'Write':
 
 	# with the perfect scheduling version of plane state we do need to keep track of the planes
-	planes = [[[0 for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
+	planes = [[[0 for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
 
 	# list of pending writes that this analysis creates
 	pending_writes = []
@@ -320,7 +320,7 @@ elif mode == 'Write':
 	completed_writes = 0
 	completed_reads = 0
 	free_planes = TOTAL_PLANES
-	free_channels = NUM_PACKAGES
+	free_channels = cfg.NUM_PACKAGES
 	write_delayed = 0
 	read_delayed = 0
 	channel_delays = 0
@@ -554,14 +554,14 @@ elif mode == 'Write':
 #========================================================================================================
 elif mode == 'Sched1':
 	# with the perfect scheduling version of plane state we do need to keep track of the planes
-	plane_states = [[[[] for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
+	plane_states = [[[[] for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
 
 	# cycles when each planes next write gap appears and ends
-	plane_gaps = [[[[] for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
+	plane_gaps = [[[[] for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
 	
 	# counters
 	write_counter = 0
-	read_counters = [[[0 for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
+	read_counters = [[[0 for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
 	read_counter = 0
 
 	# write pointers
@@ -615,9 +615,9 @@ elif mode == 'Sched1':
 		plane_data.append(state)
 
 	# now that we have that we want to turn those plane state logs into plane gap logs
-	for i in range(NUM_PACKAGES):
-		for j in range(DIES_PER_PACKAGE):
-			for k in range(PLANES_PER_DIE):
+	for i in range(cfg.NUM_PACKAGES):
+		for j in range(cfg.DIES_PER_PACKAGE):
+			for k in range(cfg.PLANES_PER_DIE):
 				for h in range(len(plane_states[i][j][k])):
 					# if its the first entry we can't have a gap yet
 					# technically we could but because the clock cycles are huge and screwed up, 
@@ -655,9 +655,9 @@ elif mode == 'Sched1':
 			soonest_die = 0
 			soonest_plane = 0
 			found = 0
-			for i in range(NUM_PACKAGES):
-				for j in range(DIES_PER_PACKAGE):
-					for k in range(PLANES_PER_DIE):
+			for i in range(cfg.NUM_PACKAGES):
+				for j in range(cfg.DIES_PER_PACKAGE):
+					for k in range(cfg.PLANES_PER_DIE):
 						# make sure the gap list isn't empty
 						if len(plane_gaps[i][j][k]) > 0:
 							#check the head of each queue of gaps
@@ -752,13 +752,13 @@ elif mode == 'Sched1':
 
 				# wrap the write pointer back around
 				curr_plane = curr_plane + 1
-				if curr_plane > PLANES_PER_DIE:
+				if curr_plane > cfg.PLANES_PER_DIE:
 					curr_plane = 0
 					curr_die = curr_die + 1
-					if curr_die > DIES_PER_PACKAGE:
+					if curr_die > cfg.DIES_PER_PACKAGE:
 						curr_die = 0
 						curr_pack = curr_pack + 1
-						if curr_pack > NUM_PACKAGES:
+						if curr_pack > cfg.NUM_PACKAGES:
 							curr_pack = 0
 
 		# out of gaps so just add all of the remaining writes to the end of the file in round robin
@@ -795,13 +795,13 @@ elif mode == 'Sched1':
 
 			# wrap the write pointer back around
 			curr_plane = curr_plane + 1
-			if curr_plane > PLANES_PER_DIE:
+			if curr_plane > cfg.PLANES_PER_DIE:
 				curr_plane = 0
 				curr_die = curr_die + 1
-				if curr_die > DIES_PER_PACKAGE:
+				if curr_die > cfg.DIES_PER_PACKAGE:
 					curr_die = 0
 					curr_pack = curr_pack + 1
-					if curr_pack > NUM_PACKAGES:
+					if curr_pack > cfg.NUM_PACKAGES:
 						curr_pack = 0
 			
 
@@ -818,11 +818,11 @@ elif mode == "Analysis":
 	EPOCH_SIZE = 200000000;
 
 	# with the perfect scheduling version of plane state we do need to keep track of the planes
-	plane_states = [[[[[] for x in range(1000)] for i in range(100)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
+	plane_states = [[[[[] for x in range(1000)] for i in range(100)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
 	
 	# counters
 	write_counter = 0
-	read_counters = [[[0 for i in range(PLANES_PER_DIE)] for j in range(DIES_PER_PACKAGE)] for k in range(NUM_PACKAGES)]
+	read_counters = [[[0 for i in range(cfg.PLANES_PER_DIE)] for j in range(cfg.DIES_PER_PACKAGE)] for k in range(cfg.NUM_PACKAGES)]
 	read_counter = 0
 	
 	# get all the plane log data
@@ -856,9 +856,9 @@ elif mode == "Analysis":
 		plane_data.append(state)
 
 	for x in range(10000):		
-		for i in range(NUM_PACKAGES):
-			for j in range(DIES_PER_PACKAGE):
-				for k in range(PLANES_PER_DIE):
+		for i in range(cfg.NUM_PACKAGES):
+			for j in range(cfg.DIES_PER_PACKAGE):
+				for k in range(cfg.PLANES_PER_DIE):
 					print 'reads for package', i, 'die', j, 'plane', k, 'is', len(plane_states[x][i][j][k])
 	
 else:

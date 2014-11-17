@@ -38,6 +38,7 @@
 
 #include "SimObj.h"
 #include "FlashConfiguration.h"
+#include "Init.h"
 #include "ChannelPacket.h"
 #include "Die.h"
 #include "Channel.h"
@@ -45,7 +46,7 @@
 namespace NVDSim{
     class Buffer : public SimObj{
         public:
-	    Buffer(uint64_t i);
+	    Buffer(Configuration &nv_cfg, uint64_t i);
 	    void attachDie(Die *d);
 	    void attachChannel(Channel *c);
 		void attachDataChannel(Channel *c);
@@ -69,6 +70,7 @@ namespace NVDSim{
 		Channel *data_channel;
 	    std::vector<Die *> dies;
 
+	    Configuration &cfg;
 	    uint64_t id;
 
         private:

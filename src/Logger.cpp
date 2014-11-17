@@ -36,8 +36,10 @@
 using namespace NVDSim;
 using namespace std;
 
-Logger::Logger()
+Logger::Logger(Configuration &nv_cfg) :
+	cfg(nv_cfg)
 {
+
     	num_accesses = 0;
 	num_reads = 0;
 	num_writes = 0;
@@ -72,81 +74,81 @@ Logger::Logger()
 	average_queue_latency = 0;
 
 	ftl_queue_length = 0;
-	ctrl_queue_length = vector<vector <uint64_t> >(NUM_PACKAGES, vector<uint64_t>(DIES_PER_PACKAGE, 0));
+	ctrl_queue_length = vector<vector <uint64_t> >(cfg.NUM_PACKAGES, vector<uint64_t>(cfg.DIES_PER_PACKAGE, 0));
 
 	max_ftl_queue_length = 0;
-	max_ctrl_queue_length = vector<vector <uint64_t> >(NUM_PACKAGES, vector<uint64_t>(DIES_PER_PACKAGE, 0));
+	max_ctrl_queue_length = vector<vector <uint64_t> >(cfg.NUM_PACKAGES, vector<uint64_t>(cfg.DIES_PER_PACKAGE, 0));
 
 	first_write_log = true;
 	first_read_log = true;
 
-	if(PLANE_STATE_LOG)
+	if(cfg.PLANE_STATE_LOG)
 	{
 	    first_state_log = true;
 	
-	    plane_states = new PlaneStateType **[NUM_PACKAGES];
-	    for(uint64_t i = 0; i < NUM_PACKAGES; i++){
-		plane_states[i] = new PlaneStateType *[DIES_PER_PACKAGE];
-		for(uint64_t j = 0; j < DIES_PER_PACKAGE; j++){
-		    plane_states[i][j] = new PlaneStateType[PLANES_PER_DIE];
-		    for(uint64_t k = 0; k < PLANES_PER_DIE; k++){
+	    plane_states = new PlaneStateType **[cfg.NUM_PACKAGES];
+	    for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++){
+		plane_states[i] = new PlaneStateType *[cfg.DIES_PER_PACKAGE];
+		for(uint64_t j = 0; j < cfg.DIES_PER_PACKAGE; j++){
+		    plane_states[i][j] = new PlaneStateType[cfg.PLANES_PER_DIE];
+		    for(uint64_t k = 0; k < cfg.PLANES_PER_DIE; k++){
 			plane_states[i][j][k] = IDLE;
 		    }
 		}
 	    }
 	}
 
-	if(QUEUE_EVENT_LOG)
+	if(cfg.QUEUE_EVENT_LOG)
 	{
 	    first_ftl_read_log = true;
 	    first_ftl_write_log = true;
-	    first_ctrl_read_log = new bool [NUM_PACKAGES];
-	    first_crtl_write_log = new bool [NUM_PACKAGES];
+	    first_ctrl_read_log = new bool [cfg.NUM_PACKAGES];
+	    first_crtl_write_log = new bool [cfg.NUM_PACKAGES];
 	    
-	    for(uint64_t i = 0; i < NUM_PACKAGES; i++){
+	    for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++){
 		first_ctrl_read_log[i] = true;
 		first_crtl_write_log[i] = true;
 	    }
 	}
 
 	// concurrency monitoring
-	if(CONCURRENCY_LOG)
+	if(cfg.CONCURRENCY_LOG)
 	{
-		channel_use = new uint64_t[NUM_PACKAGES];
-		for(uint64_t c = 0; c < NUM_PACKAGES; c++)
+		channel_use = new uint64_t[cfg.NUM_PACKAGES];
+		for(uint64_t c = 0; c < cfg.NUM_PACKAGES; c++)
 		{
 			channel_use[c] = 0;
 		}
 		
-		die_use = new uint64_t[DIES_PER_PACKAGE];
-		for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+		die_use = new uint64_t[cfg.DIES_PER_PACKAGE];
+		for(uint64_t d = 0; d < cfg.DIES_PER_PACKAGE; d++)
 		{
 			die_use[d] = 0;
 		}
 		
-		plane_use = new uint64_t[PLANES_PER_DIE];
-		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		plane_use = new uint64_t[cfg.PLANES_PER_DIE];
+		for(uint64_t p = 0; p < cfg.PLANES_PER_DIE; p++)
 		{
 		    plane_use[p] = 0;
 		}
 		
-		block_use = new uint64_t[BLOCKS_PER_PLANE];
-		for(uint64_t b = 0; b < BLOCKS_PER_PLANE; b++)
+		block_use = new uint64_t[cfg.BLOCKS_PER_PLANE];
+		for(uint64_t b = 0; b < cfg.BLOCKS_PER_PLANE; b++)
 		{
 			block_use[b] = 0;
 		}
 
-		all_block_use = new uint64_t ***[NUM_PACKAGES];
-	    for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+		all_block_use = new uint64_t ***[cfg.NUM_PACKAGES];
+	    for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 		{
-			all_block_use[i] = new uint64_t **[DIES_PER_PACKAGE];
-			for(uint64_t j = 0; j < DIES_PER_PACKAGE; j++)
+			all_block_use[i] = new uint64_t **[cfg.DIES_PER_PACKAGE];
+			for(uint64_t j = 0; j < cfg.DIES_PER_PACKAGE; j++)
 			{
-				all_block_use[i][j] = new uint64_t *[PLANES_PER_DIE];
-				for(uint64_t k = 0; k < PLANES_PER_DIE; k++)
+				all_block_use[i][j] = new uint64_t *[cfg.PLANES_PER_DIE];
+				for(uint64_t k = 0; k < cfg.PLANES_PER_DIE; k++)
 				{
-					all_block_use[i][j][k] = new uint64_t[BLOCKS_PER_PLANE];
-					for(uint64_t l = 0; l < BLOCKS_PER_PLANE; l++)
+					all_block_use[i][j][k] = new uint64_t[cfg.BLOCKS_PER_PLANE];
+					for(uint64_t l = 0; l < cfg.BLOCKS_PER_PLANE; l++)
 					{
 						all_block_use[i][j][k][l] = 0;
 					}
@@ -155,23 +157,23 @@ Logger::Logger()
 	    }
 
 		// Init the block use histogram.
-		for (uint64_t i = 0; i <= BLOCK_HISTOGRAM_MAX; i += BLOCK_HISTOGRAM_BIN)
+		for (uint64_t i = 0; i <= cfg.BLOCK_HISTOGRAM_MAX; i += cfg.BLOCK_HISTOGRAM_BIN)
 		{
 			block_use_histogram[i] = 0;
 		}
 	}
 
-	idle_energy = vector<double>(NUM_PACKAGES, 0.0); 
-	access_energy = vector<double>(NUM_PACKAGES, 0.0);        
+	idle_energy = vector<double>(cfg.NUM_PACKAGES, 0.0); 
+	access_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);        
 }
 
 void Logger::update()
 {
     	//update idle energy
 	//since this is already subtracted from the access energies we just do it every time
-	for(uint64_t i = 0; i < (NUM_PACKAGES); i++)
+	for(uint64_t i = 0; i < (cfg.NUM_PACKAGES); i++)
 	{
-	  idle_energy[i] += STANDBY_I;
+	  idle_energy[i] += cfg.STANDBY_I;
 	}
 
 	this->step();
@@ -186,48 +188,48 @@ void Logger::access_start(uint64_t addr, TransactionType op)
 {
 	access_queue.push_back(pair <uint64_t, uint64_t>(addr, currentClockCycle));
 
-	if(op == DATA_WRITE && WRITE_ARRIVE_LOG)
+	if(op == DATA_WRITE && cfg.WRITE_ARRIVE_LOG)
 	{
 	    if(first_write_log == true)
 	    {
-		string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+		string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 		const char * command = command_str.c_str();
 		int sys_done = system(command);
 		if (sys_done != 0)
 		{
 		    WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 		}
-		savefile.open(LOG_DIR+"WriteArrive.log", ios_base::out | ios_base::trunc);
+		savefile.open(cfg.LOG_DIR+"WriteArrive.log", ios_base::out | ios_base::trunc);
 		savefile<<"Write Arrival Log \n";
 		first_write_log = false;
 	    }
 	    else
 	    {
-		savefile.open(LOG_DIR+"WriteArrive.log", ios_base::out | ios_base::app);
+		savefile.open(cfg.LOG_DIR+"WriteArrive.log", ios_base::out | ios_base::app);
 	    }
 
 	    savefile << currentClockCycle << " " << addr << " " << "\n";
 
 	    savefile.close();
 	}
-	else if(op == DATA_READ && READ_ARRIVE_LOG)
+	else if(op == DATA_READ && cfg.READ_ARRIVE_LOG)
 	{
 	    if(first_read_log == true)
 	    {
-		string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+		string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 		const char * command = command_str.c_str();
 		int sys_done = system(command);
 		if (sys_done != 0)
 		{
 		    WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 		}
-		savefile.open(LOG_DIR+"ReadArrive.log", ios_base::out | ios_base::trunc);
+		savefile.open(cfg.LOG_DIR+"ReadArrive.log", ios_base::out | ios_base::trunc);
 		savefile<<"Read Arrival Log \n";
 		first_read_log = false;
 	    }
 	    else
 	    {
-		savefile.open(LOG_DIR+"ReadArrive.log", ios_base::out | ios_base::app);
+		savefile.open(cfg.LOG_DIR+"ReadArrive.log", ios_base::out | ios_base::app);
 	    }
 
 	    savefile << currentClockCycle << " " << addr << " " << "\n";
@@ -310,17 +312,17 @@ void Logger::access_stop(uint64_t addr, uint64_t paddr)
 	if (a.op == READ)
 	{
 	    //update access energy figures
-	    access_energy[a.package] += (READ_I - STANDBY_I) * READ_TIME/2;
+	    access_energy[a.package] += (cfg.READ_I - cfg.STANDBY_I) * cfg.READ_TIME/2;
 	    this->read();
 	    this->read_latency(a.stop - a.start);
 	}	         
 	else
 	{
 	    //update access energy figures
-	    access_energy[a.package] += (WRITE_I - STANDBY_I) * WRITE_TIME/2;
+	    access_energy[a.package] += (cfg.WRITE_I - cfg.STANDBY_I) * cfg.WRITE_TIME/2;
 	    this->write();    
 	    this->write_latency(a.stop - a.start);
-	    if(WEAR_LEVEL_LOG)
+	    if(cfg.WEAR_LEVEL_LOG)
 	    {
 		if(writes_per_address.count(a.pAddr) == 0)
 		{
@@ -371,40 +373,40 @@ void Logger::log_ftl_queue_event(bool write, std::list<FlashTransaction> *queue)
     {
 	if(first_ftl_read_log == true)
 	{
-	    string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+	    string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 	    const char * command = command_str.c_str();
 	    int sys_done = system(command);
 	    if (sys_done != 0)
 	    {
 		WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 	    }
-	    savefile.open(LOG_DIR+"FtlReadQueue.log", ios_base::out | ios_base::trunc);
+	    savefile.open(cfg.LOG_DIR+"FtlReadQueue.log", ios_base::out | ios_base::trunc);
 	    savefile<<"FTL Read Queue Log \n";
 	    first_ftl_read_log = false;
 	}
 	else
 	{
-	    savefile.open(LOG_DIR+"FtlReadQueue.log", ios_base::out | ios_base::app);
+	    savefile.open(cfg.LOG_DIR+"FtlReadQueue.log", ios_base::out | ios_base::app);
 	}
     }
     else if(write)
     {
 	if(first_ftl_write_log == true)
 	{
-	    string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+	    string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 	    const char * command = command_str.c_str();
 	    int sys_done = system(command);
 	    if (sys_done != 0)
 	    {
 		WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 	    }
-	    savefile.open(LOG_DIR+"FtlWriteQueue.log", ios_base::out | ios_base::trunc);
+	    savefile.open(cfg.LOG_DIR+"FtlWriteQueue.log", ios_base::out | ios_base::trunc);
 	    savefile<<"FTL Write Queue Log \n";
 	    first_ftl_write_log = false;
 	}
 	else
 	{
-	    savefile.open(LOG_DIR+"FtlWriteQueue.log", ios_base::out | ios_base::app);
+	    savefile.open(cfg.LOG_DIR+"FtlWriteQueue.log", ios_base::out | ios_base::app);
 	}
     }
 
@@ -430,20 +432,20 @@ void Logger::log_ctrl_queue_event(bool write, uint64_t number, std::list<Channel
         file += ".log";
 	if(first_ctrl_read_log[number] == true)
 	{
-	    string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+	    string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 	    const char * command = command_str.c_str();
 	    int sys_done = system(command);
 	    if (sys_done != 0)
 	    {
 		WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 	    }
-	    savefile.open(LOG_DIR+file, ios_base::out | ios_base::trunc);
+	    savefile.open(cfg.LOG_DIR+file, ios_base::out | ios_base::trunc);
 	    savefile<<"Controller Read Queue " << number << " Log \n";
 	    first_ctrl_read_log[number] = false;
 	}
 	else
 	{
-	    savefile.open(LOG_DIR+file, ios_base::out | ios_base::app);
+	    savefile.open(cfg.LOG_DIR+file, ios_base::out | ios_base::app);
 	}
     }
     else if(write)
@@ -455,20 +457,20 @@ void Logger::log_ctrl_queue_event(bool write, uint64_t number, std::list<Channel
 	file += ".log";
 	if(first_crtl_write_log[number] == true)
 	{
-	    string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+	    string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 	    const char * command = command_str.c_str();
 	    int sys_done = system(command);
 	    if (sys_done != 0)
 	    {
 		WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 	    }
-	    savefile.open(LOG_DIR+file, ios_base::out | ios_base::trunc);
+	    savefile.open(cfg.LOG_DIR+file, ios_base::out | ios_base::trunc);
 	    savefile<<"Controller Write Queue " << number << " Log \n";
 	    first_crtl_write_log[number] = false;
 	}
 	else
 	{
-	    savefile.open(LOG_DIR+file, ios_base::out | ios_base::app);
+	    savefile.open(cfg.LOG_DIR+file, ios_base::out | ios_base::app);
 	}
     }
 
@@ -489,14 +491,14 @@ void Logger::log_plane_state(uint64_t address, uint64_t package, uint64_t die, u
     
     if(first_state_log == true)
     {
-	string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+	string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 	const char * command = command_str.c_str();
 	int sys_done = system(command);
 	if (sys_done != 0)
 	{
 	    WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 	}
-	savefile.open(LOG_DIR+"PlaneState.log", ios_base::out | ios_base::trunc);
+	savefile.open(cfg.LOG_DIR+"PlaneState.log", ios_base::out | ios_base::trunc);
 	savefile<<"Plane State Log \n";
 	first_state_log = false;
     }
@@ -506,16 +508,16 @@ void Logger::log_plane_state(uint64_t address, uint64_t package, uint64_t die, u
 	{
 	    cout << "was already open \n";
 	}
-	savefile.open(LOG_DIR+"PlaneState.log", ios_base::out | ios_base::app);
+	savefile.open(cfg.LOG_DIR+"PlaneState.log", ios_base::out | ios_base::app);
     }
 
 
     savefile << currentClockCycle << " " << address << " " << package << " " << die << " " << plane << " " << op << "\n";
  
     /*savefile<<"Clock cycle: "<<currentClockCycle<<"\n";
-	for(uint i = 0; i < NUM_PACKAGES; i++){
-	    for(uint j = 0; j < DIES_PER_PACKAGE; j++){
-		for(uint k = 0; k < PLANES_PER_DIE; k++){
+	for(uint i = 0; i < cfg.NUM_PACKAGES; i++){
+	    for(uint j = 0; j < cfg.DIES_PER_PACKAGE; j++){
+		for(uint k = 0; k < cfg.PLANES_PER_DIE; k++){
 		    savefile<<plane_states[i][j][k]<<" ";
 		}
 		savefile<<"   ";
@@ -610,17 +612,17 @@ void Logger::used_something(uint64_t channel, uint64_t die, uint64_t plane, uint
 
 void Logger::generate_block_use_histogram()
 {
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
-		for(uint64_t j = 0; j < DIES_PER_PACKAGE; j++)
+		for(uint64_t j = 0; j < cfg.DIES_PER_PACKAGE; j++)
 		{
-			for(uint64_t k = 0; k < PLANES_PER_DIE; k++)
+			for(uint64_t k = 0; k < cfg.PLANES_PER_DIE; k++)
 			{
-				for(uint64_t l = 0; l < BLOCKS_PER_PLANE; l++)
+				for(uint64_t l = 0; l < cfg.BLOCKS_PER_PLANE; l++)
 				{
-					uint64_t bin = (all_block_use[i][j][k][l] / BLOCK_HISTOGRAM_BIN) * BLOCK_HISTOGRAM_BIN;
-					if (all_block_use[i][j][k][l] >= BLOCK_HISTOGRAM_MAX)
-						bin = BLOCK_HISTOGRAM_MAX;
+					uint64_t bin = (all_block_use[i][j][k][l] / cfg.BLOCK_HISTOGRAM_BIN) * cfg.BLOCK_HISTOGRAM_BIN;
+					if (all_block_use[i][j][k][l] >= cfg.BLOCK_HISTOGRAM_MAX)
+						bin = cfg.BLOCK_HISTOGRAM_MAX;
 					uint64_t bin_cnt = block_use_histogram[bin];
 					block_use_histogram[bin] = bin_cnt + 1;
 				}
@@ -677,7 +679,7 @@ double Logger::calc_throughput(uint64_t cycles, uint64_t accesses)
 {
     if(cycles != 0)
     {
-	return ((((double)accesses / (double)cycles) * (1.0/(CYCLE_TIME * 0.000000001)) * NV_PAGE_SIZE));
+	return ((((double)accesses / (double)cycles) * (1.0/(cfg.CYCLE_TIME * 0.000000001)) * cfg.NV_PAGE_SIZE));
     }
     else
     {
@@ -769,20 +771,20 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 {
         // Power stuff
 	// Total power used
-	vector<double> total_energy = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> total_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
 	
         // Average power used
-	vector<double> ave_idle_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> ave_access_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> average_power = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> ave_idle_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> ave_access_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> average_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    if(cycle != 0)
 	    {
-		total_energy[i] = (idle_energy[i] + access_energy[i]) * VCC;
-		ave_idle_power[i] = (idle_energy[i] * VCC) / cycle;
-		ave_access_power[i] = (access_energy[i] * VCC) / cycle;
+		total_energy[i] = (idle_energy[i] + access_energy[i]) * cfg.VCC;
+		ave_idle_power[i] = (idle_energy[i] * cfg.VCC) / cycle;
+		ave_access_power[i] = (access_energy[i] * cfg.VCC) / cycle;
 		average_power[i] = total_energy[i] / cycle;
 	    }
 	    else
@@ -794,14 +796,14 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	    }
 	}
 
-	string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+	string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 	const char * command = command_str.c_str();
 	int sys_done = system(command);
 	if (sys_done != 0)
 	{
 	    WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 	}
-	savefile.open(LOG_DIR+"NVDIMM.log", ios_base::out | ios_base::trunc);
+	savefile.open(cfg.LOG_DIR+"NVDIMM.log", ios_base::out | ios_base::trunc);
 	savefile<<"NVDIMM Log \n";
 
 	if (!savefile) 
@@ -840,16 +842,16 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"\nThroughput and Latency Data: \n";
 	savefile<<"========================\n";
 	savefile<<"Average Read Latency: " <<(divide((float)average_read_latency,(float)num_reads))<<" cycles";
-	savefile<<" (" <<(divide((float)average_read_latency,(float)num_reads)*CYCLE_TIME)<<" ns)\n";
+	savefile<<" (" <<(divide((float)average_read_latency,(float)num_reads)*cfg.CYCLE_TIME)<<" ns)\n";
 	savefile<<"Average Write Latency: " <<divide((float)average_write_latency,(float)num_writes)<<" cycles";
-	savefile<<" (" <<(divide((float)average_write_latency,(float)num_writes))*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<(divide((float)average_write_latency,(float)num_writes))*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Average Queue Latency: " <<divide((float)average_queue_latency,(float)num_accesses)<<" cycles";
-	savefile<<" (" <<(divide((float)average_queue_latency,(float)num_accesses))*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<(divide((float)average_queue_latency,(float)num_accesses))*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Total Throughput: " <<this->calc_throughput(cycle, num_accesses)<<" KB/sec\n";
 	savefile<<"Read Throughput: " <<this->calc_throughput(cycle, num_reads)<<" KB/sec\n";
 	savefile<<"Write Throughput: " <<this->calc_throughput(cycle, num_writes)<<" KB/sec\n";
 
-	if(REFRESH_ENABLE)
+	if(cfg.REFRESH_ENABLE)
 	{
 		savefile<<"\nConflict Frequency and Delay Data: \n";
 		savefile<<"========================\n";
@@ -863,34 +865,34 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	}
 
 	// stuff for concurrency monitoring
-	if(CONCURRENCY_LOG)
+	if(cfg.CONCURRENCY_LOG)
 	{
 		savefile<<"\n Concurrency Data: \n";
 		savefile<<"========================\n";
 		savefile<<"\n Channel Usage: \n";
 		savefile<<"------------------------\n";
-		for(uint64_t c = 0; c < NUM_PACKAGES; c++)
+		for(uint64_t c = 0; c < cfg.NUM_PACKAGES; c++)
 		{
 			savefile<<"Channel " << c << " : " << channel_use[c] << "\n";
 		}
 		
 		savefile<<"\n Die Usage: \n";
 		savefile<<"------------------------\n";
-		for(uint64_t d = 0; d < DIES_PER_PACKAGE; d++)
+		for(uint64_t d = 0; d < cfg.DIES_PER_PACKAGE; d++)
 		{
 			savefile<<"Die " << d << " : " << die_use[d] << "\n";
 		}
 
 		savefile<<"\n Plane Usage: \n";
 		savefile<<"------------------------\n";
-		for(uint64_t p = 0; p < PLANES_PER_DIE; p++)
+		for(uint64_t p = 0; p < cfg.PLANES_PER_DIE; p++)
 		{
 			savefile<<"Plane " << p << " : " << plane_use[p] << "\n";
 		}
 
 		savefile<<"\n Block Usage: \n";
 		savefile<<"------------------------\n";
-		for(uint64_t b = 0; b < BLOCKS_PER_PLANE; b++)
+		for(uint64_t b = 0; b < cfg.BLOCKS_PER_PLANE; b++)
 		{
 			savefile<<"Block " << b << " : " << block_use[b] << "\n";
 		}
@@ -898,9 +900,9 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 		generate_block_use_histogram();
 		savefile<<"\n Block Usage Histogram: \n";
 		savefile<<"------------------------\n";
-		savefile << "BLOCK_HISTOGRAM_BIN: " << BLOCK_HISTOGRAM_BIN << "\n";
-		savefile << "BLOCK_HISTOGRAM_MAX: " << BLOCK_HISTOGRAM_MAX << "\n\n";
-		for (uint64_t bin = 0; bin <= BLOCK_HISTOGRAM_MAX; bin += BLOCK_HISTOGRAM_BIN)
+		savefile << "cfg.BLOCK_HISTOGRAM_BIN: " << cfg.BLOCK_HISTOGRAM_BIN << "\n";
+		savefile << "cfg.BLOCK_HISTOGRAM_MAX: " << cfg.BLOCK_HISTOGRAM_MAX << "\n\n";
+		for (uint64_t bin = 0; bin <= cfg.BLOCK_HISTOGRAM_MAX; bin += cfg.BLOCK_HISTOGRAM_BIN)
 		{
 			savefile << bin << ": " << block_use_histogram[bin] << "\n";
 		}
@@ -917,7 +919,7 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	    }
 	}
 
-	if(WEAR_LEVEL_LOG)
+	if(cfg.WEAR_LEVEL_LOG)
 	{
 	    savefile<<"\nWrite Frequency Data: \n";
 	    savefile<<"========================\n";
@@ -931,12 +933,12 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"\nPower Data: \n";
 	savefile<<"========================\n";
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    savefile<<"Package: "<<i<<"\n";
-	    savefile<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<" mJ\n\n";
+	    savefile<<"Accumulated Idle Energy: "<<(idle_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Access Energy: "<<(access_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Total Energy: "<<(total_energy[i] * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n\n";
 	 
 	    savefile<<"Average Idle Power: "<<ave_idle_power[i]<<" mW\n";
 	    savefile<<"Average Access Power: "<<ave_access_power[i]<<" mW\n";
@@ -947,7 +949,7 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 
 	savefile.close();
 
-	if(USE_EPOCHS && !RUNTIME_WRITE)
+	if(USE_EPOCHS && !cfg.RUNTIME_WRITE)
 	{
 	    list<EpochEntry>::iterator it;
 	    for (it = epoch_queue.begin(); it != epoch_queue.end(); it++)
@@ -961,18 +963,18 @@ void Logger::print(uint64_t cycle)
 {
         // Power stuff
 	// Total power used
-	vector<double> total_energy = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> total_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
 	
         // Average power used
-	vector<double> ave_idle_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> ave_access_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> average_power = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> ave_idle_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> ave_access_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> average_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
-	    total_energy[i] = (idle_energy[i] + access_energy[i]) * VCC;
-	    ave_idle_power[i] = (idle_energy[i] * VCC) / cycle;
-	    ave_access_power[i] = (access_energy[i] * VCC) / cycle;
+	    total_energy[i] = (idle_energy[i] + access_energy[i]) * cfg.VCC;
+	    ave_idle_power[i] = (idle_energy[i] * cfg.VCC) / cycle;
+	    ave_access_power[i] = (access_energy[i] * cfg.VCC) / cycle;
 	    average_power[i] = total_energy[i] / cycle;
 	}
 
@@ -982,12 +984,12 @@ void Logger::print(uint64_t cycle)
 	cout<<"\nPower Data: \n";
 	cout<<"========================\n";
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    cout<<"Package: "<<i<<"\n";
-	    cout<<"Accumulated Idle Energy: "<<(idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
-	    cout<<"Accumulated Access Energy: "<<(access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<"mJ\n";
-	    cout<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<"mJ\n\n";
+	    cout<<"Accumulated Idle Energy: "<<(idle_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<"mJ\n";
+	    cout<<"Accumulated Access Energy: "<<(access_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<"mJ\n";
+	    cout<<"Total Energy: "<<(total_energy[i] * (cfg.CYCLE_TIME * 0.000000001))<<"mJ\n\n";
 	 
 	    cout<<"Average Idle Power: "<<ave_idle_power[i]<<"mW\n";
 	    cout<<"Average Access Power: "<<ave_access_power[i]<<"mW\n";
@@ -997,8 +999,8 @@ void Logger::print(uint64_t cycle)
 
 vector<vector<double> > Logger::getEnergyData(void)
 {
-    vector<vector<double> > temp = vector<vector<double> >(2, vector<double>(NUM_PACKAGES, 0.0));
-    for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+    vector<vector<double> > temp = vector<vector<double> >(2, vector<double>(cfg.NUM_PACKAGES, 0.0));
+    for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
     {
 	temp[0][i] = idle_energy[i];
 	temp[1][i] = access_energy[i];
@@ -1008,7 +1010,7 @@ vector<vector<double> > Logger::getEnergyData(void)
 
 void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
 {
-    EpochEntry this_epoch;
+	EpochEntry this_epoch;
     this_epoch.cycle = cycle;
     this_epoch.epoch = epoch;
 
@@ -1041,6 +1043,7 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
 
     this_epoch.writes_per_address = writes_per_address;
 
+    this_epoch.ctrl_queue_length = vector<vector<uint64_t> >(cfg.NUM_PACKAGES, vector<uint64_t>(cfg.DIES_PER_PACKAGE, 0));
     for(uint64_t i = 0; i < ctrl_queue_length.size(); i++)
     {
 	for(uint64_t j = 0; j < ctrl_queue_length[i].size(); j++)
@@ -1049,7 +1052,9 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
 	}
     }
 
-    for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+    this_epoch.idle_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
+    this_epoch.access_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
+    for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
     {	
 	this_epoch.idle_energy[i] = idle_energy[i]; 
 	this_epoch.access_energy[i] = access_energy[i]; 
@@ -1088,14 +1093,14 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
 	this_epoch.average_write_latency -= last_epoch.average_write_latency;
 	this_epoch.average_queue_latency -= last_epoch.average_queue_latency;
 	
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{	
 	    this_epoch.idle_energy[i] -= last_epoch.idle_energy[i]; 
 	    this_epoch.access_energy[i] -= last_epoch.access_energy[i]; 
 	}
     }
     
-    if(RUNTIME_WRITE)
+    if(cfg.RUNTIME_WRITE)
     {
 	write_epoch(&this_epoch);
     }
@@ -1109,21 +1114,21 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
 
 void Logger::write_epoch(EpochEntry *e)
 {
-    	if(e->epoch == 0 && RUNTIME_WRITE)
+    	if(e->epoch == 0 && cfg.RUNTIME_WRITE)
 	{
-	    string command_str = "test -e "+LOG_DIR+" || mkdir "+LOG_DIR;
+	    string command_str = "test -e "+cfg.LOG_DIR+" || mkdir "+cfg.LOG_DIR;
 	    const char * command = command_str.c_str();
 	    int sys_done = system(command);
 	    if (sys_done != 0)
 	    {
 		WARNING("Something might have gone wrong when nvdimm attempted to makes its log directory");
 	    }
-	    savefile.open(LOG_DIR+"NVDIMM_EPOCH.log", ios_base::out | ios_base::trunc);
+	    savefile.open(cfg.LOG_DIR+"NVDIMM_EPOCH.log", ios_base::out | ios_base::trunc);
 	    savefile<<"NVDIMM_EPOCH Log \n";
 	}
 	else
 	{
-	    savefile.open(LOG_DIR+"NVDIMM_EPOCH.log", ios_base::out | ios_base::app);
+	    savefile.open(cfg.LOG_DIR+"NVDIMM_EPOCH.log", ios_base::out | ios_base::app);
 	}
 
 	if (!savefile) 
@@ -1134,20 +1139,20 @@ void Logger::write_epoch(EpochEntry *e)
 
 	// Power stuff
 	// Total power used
-	vector<double> total_energy = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> total_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
 	
         // Average power used
-	vector<double> ave_idle_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> ave_access_power = vector<double>(NUM_PACKAGES, 0.0);
-	vector<double> average_power = vector<double>(NUM_PACKAGES, 0.0);
+	vector<double> ave_idle_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> ave_access_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
+	vector<double> average_power = vector<double>(cfg.NUM_PACKAGES, 0.0);
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    if(e->cycle != 0)
 	    {
-		total_energy[i] = (e->idle_energy[i] + e->access_energy[i]) * VCC;
-		ave_idle_power[i] = (e->idle_energy[i] * VCC) / e->cycle;
-		ave_access_power[i] = (e->access_energy[i] * VCC) / e->cycle;
+		total_energy[i] = (e->idle_energy[i] + e->access_energy[i]) * cfg.VCC;
+		ave_idle_power[i] = (e->idle_energy[i] * cfg.VCC) / e->cycle;
+		ave_access_power[i] = (e->access_energy[i] * cfg.VCC) / e->cycle;
 		average_power[i] = total_energy[i] / e->cycle;
 	    }
 	    else
@@ -1176,7 +1181,7 @@ void Logger::write_epoch(EpochEntry *e)
 	savefile<<"Number of Unmapped Writes: " <<e->num_write_unmapped<<"\n";
 	savefile<<"Number of Mapped Writes: " <<e->num_write_mapped<<"\n";
 
-	if(REFRESH_ENABLE)
+	if(cfg.REFRESH_ENABLE)
 	{
 		savefile<<"\nConflict Frequency and Delay Data: \n";
 		savefile<<"========================\n";
@@ -1192,11 +1197,11 @@ void Logger::write_epoch(EpochEntry *e)
 	savefile<<"\nThroughput and Latency Data: \n";
 	savefile<<"========================\n";
 	savefile<<"Average Read Latency: " <<(divide((float)e->average_read_latency,(float)e->num_reads))<<" cycles";
-	savefile<<" (" <<(divide((float)e->average_read_latency,(float)e->num_reads)*CYCLE_TIME)<<" ns)\n";
+	savefile<<" (" <<(divide((float)e->average_read_latency,(float)e->num_reads)*cfg.CYCLE_TIME)<<" ns)\n";
 	savefile<<"Average Write Latency: " <<divide((float)e->average_write_latency,(float)e->num_writes)<<" cycles";
-	savefile<<" (" <<(divide((float)e->average_write_latency,(float)e->num_writes))*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<(divide((float)e->average_write_latency,(float)e->num_writes))*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Average Queue Latency: " <<divide((float)e->average_queue_latency,(float)e->num_accesses)<<" cycles";
-	savefile<<" (" <<(divide((float)e->average_queue_latency,(float)e->num_accesses))*CYCLE_TIME<<" ns)\n";
+	savefile<<" (" <<(divide((float)e->average_queue_latency,(float)e->num_accesses))*cfg.CYCLE_TIME<<" ns)\n";
 	savefile<<"Total Throughput: " <<this->calc_throughput(e->cycle, e->num_accesses)<<" KB/sec\n";
 	savefile<<"Read Throughput: " <<this->calc_throughput(e->cycle, e->num_reads)<<" KB/sec\n";
 	savefile<<"Write Throughput: " <<this->calc_throughput(e->cycle, e->num_writes)<<" KB/sec\n";
@@ -1212,7 +1217,7 @@ void Logger::write_epoch(EpochEntry *e)
 	    }
 	}
 
-	if(WEAR_LEVEL_LOG)
+	if(cfg.WEAR_LEVEL_LOG)
 	{
 	    savefile<<"\nWrite Frequency Data: \n";
 	    savefile<<"========================\n";
@@ -1226,12 +1231,12 @@ void Logger::write_epoch(EpochEntry *e)
 	savefile<<"\nPower Data: \n";
 	savefile<<"========================\n";
 
-	for(uint64_t i = 0; i < NUM_PACKAGES; i++)
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    savefile<<"Package: "<<i<<"\n";
-	    savefile<<"Accumulated Idle Energy: "<<(e->idle_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Accumulated Access Energy: "<<(e->access_energy[i] * VCC * (CYCLE_TIME * 0.000000001))<<" mJ\n";
-	    savefile<<"Total Energy: "<<(total_energy[i] * (CYCLE_TIME * 0.000000001))<<" mJ\n\n";
+	    savefile<<"Accumulated Idle Energy: "<<(e->idle_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Accumulated Access Energy: "<<(e->access_energy[i] * cfg.VCC * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n";
+	    savefile<<"Total Energy: "<<(total_energy[i] * (cfg.CYCLE_TIME * 0.000000001))<<" mJ\n\n";
 	 
 	    savefile<<"Average Idle Power: "<<ave_idle_power[i]<<" mW\n";
 	    savefile<<"Average Access Power: "<<ave_access_power[i]<<" mW\n";
