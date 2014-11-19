@@ -100,6 +100,7 @@ void Plane::writeDone(ChannelPacket *busPacket)
 	    
     // The data packet is now done being used, so it can be deleted.
     delete dataReg;
+    dataReg = NULL;
 }
 
 // should only ever erase blocks
