@@ -167,9 +167,9 @@ void Plane::dataGone(void)
 {
     // read no longer needs this register
 	if(cfg.RW_INTERLEAVE_ENABLE)
-		cacheReg = NULL;
+		delete cacheReg;
 	else
-		dataReg = NULL;
+		delete dataReg;
 }
 
 void Plane::clearWrite(void)

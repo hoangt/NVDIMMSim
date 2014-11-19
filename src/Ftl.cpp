@@ -639,6 +639,9 @@ void Ftl::handle_disk_read(bool gc)
 	used_page_count++;
 	addressMap[vAddr] = pAddr;
 	
+	// Delete the fast write packet cause its done
+	delete tempPacket;
+	
 	if(cfg.wearLevelingScheme == RoundRobin)
 	{
 	    //update "write pointer"
