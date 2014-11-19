@@ -99,7 +99,7 @@ void Plane::writeDone(ChannelPacket *busPacket)
 	blocks[busPacket->block].write(cfg.GARBAGE_COLLECT, busPacket->page, dataReg->data);
 	    
     // The data packet is now done being used, so it can be deleted.
-    dataReg = NULL;
+    delete dataReg;
 }
 
 // should only ever erase blocks
@@ -167,9 +167,9 @@ void Plane::dataGone(void)
 {
     // read no longer needs this register
 	if(cfg.RW_INTERLEAVE_ENABLE)
-		delete cacheReg;
+		cacheReg = NULL;
 	else
-		delete dataReg;
+		dataReg = NULL;
 }
 
 void Plane::clearWrite(void)
