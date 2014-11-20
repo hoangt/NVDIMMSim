@@ -77,7 +77,6 @@ int Channel::obtainChannel(uint64_t s, SenderType t, ChannelPacket *p){
 	else if(t == CONTROLLER)
 	{
 		int dieBusy = buffer->dies[p->die]->isDieBusy(p->plane); 
-		//cout << "dieBusy returned " << dieBusy << "\n";
 		if((!cfg.BUFFERED && (dieBusy == 1)) ||
 		   // die is writing and there is no room in the cache register so just wait
 		   (!cfg.BUFFERED && (dieBusy == 6)) ||

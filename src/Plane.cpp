@@ -177,6 +177,7 @@ void Plane::clearWrite(void)
 {
     if(dataReg != NULL)
     {
+	    delete dataReg;
 	dataReg = NULL;
     }
     else

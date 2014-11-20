@@ -351,7 +351,7 @@ void Die::update(void){
 					break;
 				case WRITE:
 				case SET_WRITE:
-					//call write callback					   
+					//call write callback	
 					if (parentNVDIMM->WriteDataDone != NULL){
 						(*parentNVDIMM->WriteDataDone)(parentNVDIMM->systemID, currentCommand->virtualAddress, currentClockCycle,true);
 					}
