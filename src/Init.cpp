@@ -367,10 +367,8 @@ namespace NVDSim
 			// Queue Options
 			else if (key.compare("FTL_QUEUE_LENGTH") == 0)
 				convert_uint64_t(cfg.FTL_QUEUE_LENGTH, value, key);
-			else if (key.compare("CTRL_READ_QUEUE_LENGTH") == 0)
-				convert_uint64_t(cfg.CTRL_READ_QUEUE_LENGTH, value, key);
-			else if (key.compare("CTRL_WRITE_QUEUE_LENGTH") == 0)
-				convert_uint64_t(cfg.CTRL_WRITE_QUEUE_LENGTH, value, key);
+			else if (key.compare("CTRL_QUEUE_LENGTH") == 0)
+				convert_uint64_t(cfg.CTRL_QUEUE_LENGTH, value, key);
 
 			// Power Settings
 			else if (key.compare("READ_I") == 0)

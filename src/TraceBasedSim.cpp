@@ -138,7 +138,7 @@ void test_obj::run_test(void){
 	  if(!waiting){
 		  //t = FlashTransaction(DATA_WRITE, write_addr, (void *)0xdeadbeef);
 		  //result = (*NVDimm).add(t);
-	      t = FlashTransaction(DATA_WRITE, write_addr, (void *)0xdeadbeef);
+	      t = FlashTransaction(DATA_READ, write_addr, (void *)0xdeadbeef);
 	      result = (*NVDimm).add(t);
 	      
 	      if(result == 1)

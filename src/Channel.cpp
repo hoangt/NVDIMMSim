@@ -74,34 +74,6 @@ int Channel::obtainChannel(uint64_t s, SenderType t, ChannelPacket *p){
 	{
 		return 0;
 	}
-	else if(t == CONTROLLER)
-	{
-		int dieBusy = buffer->dies[p->die]->isDieBusy(p->plane); 
-		if((!cfg.BUFFERED && (dieBusy == 1)) ||
-		   // die is writing and there is no room in the cache register so just wait
-		   (!cfg.BUFFERED && (dieBusy == 6)) ||
-		   // should allow us to send write data to a buffer that is currently writing
-		   (!cfg.BUFFERED && p->busPacketType != DATA && dieBusy == 2) ||
-		   // should allow us to send a write command to a plane that has a loaded cache register
-		   (!cfg.BUFFERED && p->busPacketType == DATA && (dieBusy == 3 || dieBusy == 5)) ||
-		   // should keep us from sending a read command to a plane that has a loaded data register
-		   (!cfg.BUFFERED && (p->busPacketType == READ || p->busPacketType == GC_READ) && 
-			(dieBusy == 3 ||
-			 (dieBusy == 4))) ||
-		   (cfg.REFRESH_ENABLE && p->busPacketType == AUTO_REFRESH && !buffer->dies[p->die]->canDieRefresh()) ||
-		   (busy == 1))
-			{
-				return 0;		
-			}
-		else
-		{
-			lastSender = sType;
-			sType = t;
-			sender = (int) s;
-			return 1;
-		}
-		return 0;
-	}
 	else if(busy != 1)
 	{
 		lastSender = sType;

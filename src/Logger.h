@@ -86,6 +86,7 @@ namespace NVDSim
 	void write_unmapped();
 	void forced_write();
 	void idle_write(); // to determine how many times we're issuing writes when we don't have a read
+	void write_queue_handled(); // to track the number of writes that aren't issued because they're redundant
 
 	void used_something(uint64_t channel, uint64_t die, uint64_t plane, uint64_t block);
 	void generate_block_use_histogram();
@@ -105,8 +106,8 @@ namespace NVDSim
 
 	void ftlQueueLength(uint64_t length);
 	virtual void ftlQueueLength(uint64_t length, uint64_t length2);
-	void ctrlQueueLength(std::vector<std::vector<uint64_t> > length);
-	void ctrlQueueSingleLength(uint64_t package, uint64_t die, uint64_t length);
+	void ctrlQueueLength(std::vector<uint64_t> length);
+	void ctrlQueueSingleLength(uint64_t package, uint64_t length);
 
 	virtual void ftlQueueReset();
 	void ctrlQueueReset();
@@ -126,6 +127,7 @@ namespace NVDSim
 	void access_process(uint64_t addr, uint64_t paddr, uint64_t package, ChannelPacketType op);
 	virtual void access_stop(uint64_t addr, uint64_t paddr);
 	void access_cancel(uint64_t addr, uint64_t paddr);
+	void access_ftl_handled(uint64_t addr);
 
 	virtual void save_epoch(uint64_t cycle, uint64_t epoch);
 	
@@ -152,6 +154,7 @@ namespace NVDSim
 	uint64_t num_read_mapped;
 	uint64_t num_write_unmapped;
 	uint64_t num_write_mapped;
+	uint64_t num_write_queue_handled;
 
 	uint64_t num_read_refresh_blocked;
 	uint64_t num_write_refresh_blocked;
@@ -165,10 +168,10 @@ namespace NVDSim
 	uint64_t average_queue_latency;
 
 	uint64_t ftl_queue_length;
-	std::vector<std::vector <uint64_t> > ctrl_queue_length;
+	std::vector<uint64_t> ctrl_queue_length;
 
 	uint64_t max_ftl_queue_length;
-	std::vector<std::vector <uint64_t> > max_ctrl_queue_length;
+	std::vector<uint64_t> max_ctrl_queue_length;
 
 	std::unordered_map<uint64_t, uint64_t> writes_per_address;
 
@@ -226,22 +229,23 @@ namespace NVDSim
 	class EpochEntry
 	{
 	public:
-	    uint64_t cycle;
-	    uint64_t epoch;
+	   	uint64_t cycle;
+	    	uint64_t epoch;
 
-	    uint64_t num_accesses;
-	    uint64_t num_reads;
-	    uint64_t num_writes;
+	    	uint64_t num_accesses;
+	    	uint64_t num_reads;
+	    	uint64_t num_writes;
 
-	    uint64_t num_row_hits;
+	    	uint64_t num_row_hits;
 
-	    uint64_t num_unmapped;
-	    uint64_t num_mapped;
+	    	uint64_t num_unmapped;
+	    	uint64_t num_mapped;
 
-	    uint64_t num_read_unmapped;
-	    uint64_t num_read_mapped;
-	    uint64_t num_write_unmapped;
-	    uint64_t num_write_mapped;    
+	    	uint64_t num_read_unmapped;
+	    	uint64_t num_read_mapped;
+	    	uint64_t num_write_unmapped;
+	    	uint64_t num_write_mapped;    
+	    	uint64_t num_write_queue_handled;
 	
 		uint64_t num_read_refresh_blocked;
 		uint64_t num_write_refresh_blocked;
@@ -251,18 +255,18 @@ namespace NVDSim
 
 		uint64_t average_refresh_delay;
 		
-	    uint64_t average_latency;
-	    uint64_t average_read_latency;
-	    uint64_t average_write_latency;
-	    uint64_t average_queue_latency;
+	    	uint64_t average_latency;
+	    	uint64_t average_read_latency;
+	    	uint64_t average_write_latency;
+	    	uint64_t average_queue_latency;
 
-	    uint64_t ftl_queue_length;
-	    std::vector<std::vector<uint64_t> > ctrl_queue_length;
+	    	uint64_t ftl_queue_length;
+	    	std::vector<uint64_t> ctrl_queue_length;
 	    
-	    std::unordered_map<uint64_t, uint64_t> writes_per_address;
+	    	std::unordered_map<uint64_t, uint64_t> writes_per_address;
 
-	    std::vector<double> idle_energy;
-	    std::vector<double> access_energy;
+	    	std::vector<double> idle_energy;
+	    	std::vector<double> access_energy;
 	};
 
 	// Store system snapshot from last epoch to compute this epoch

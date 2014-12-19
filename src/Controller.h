@@ -90,7 +90,7 @@ namespace NVDSim{
 			bool nextDie(uint64_t package);
 			void update(void);
 			bool dataReady(uint64_t package, uint64_t die, uint64_t plane);
-			void writePausingCancelation(uint64_t package);
+			void writePausingCancelation(ChannelPacket *packet);
 			bool allDiesRefreshReady(uint64_t package);
 
 			void sendQueueLength(void);
@@ -109,9 +109,7 @@ namespace NVDSim{
 
 		private:
 			bool* paused;
-			uint64_t* die_pointers; // for maintaining round robin fairness for channel access
 			uint64_t die_counter;
-			bool done;
 
 			uint64_t queue_access_counter;
 
@@ -119,14 +117,14 @@ namespace NVDSim{
 
 			std::list<FlashTransaction> returnTransaction;
 			std::vector<Package> *packages;
-			std::vector<std::vector<std::list <ChannelPacket *> > > readQueues;
-			std::vector<std::vector<std::list <ChannelPacket *> > > writeQueues;
+			std::vector<std::list <ChannelPacket *> > ctrlQueues;
 			std::vector<ChannelPacket *> outgoingPackets; //there can only ever be one outgoing packet per channel
 			std::vector<std::list <ChannelPacket *> > pendingPackets; //there can be a pending package for each plane of each die of each package
 			std::vector<uint64_t> channelXferCyclesLeft; //cycles per channel beat
 			std::vector<uint64_t> channelBeatsLeft; //channel beats per page
 
 			// DRAM Refresh stuff
+			std::vector<uint64_t> die_rpointer; // keeps track of which die is up for the next refresh
 			std::vector<uint64_t> refreshCountdown;
 			std::vector<std::vector<bool>>refreshing; // keeps track of how many bank_groups are refreshing on each channel
 

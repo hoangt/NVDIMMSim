@@ -257,7 +257,7 @@ int Die::isDieBusy(uint64_t plane){
 	}
 	else
 	{
-		// if the plane is currently no busy
+		// if the plane is currently not busy
 		if (currentCommands[plane] == NULL && sending == false)
 		{
 			// if the plane has room in its row buffer

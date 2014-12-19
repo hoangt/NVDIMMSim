@@ -88,6 +88,7 @@ namespace NVDSim
 	    uint64_t num_read_mapped;
 	    uint64_t num_write_unmapped;
 	    uint64_t num_write_mapped;
+	    uint64_t num_write_queue_handled;
 		
 	    uint64_t average_latency;
 	    uint64_t average_read_latency;
@@ -99,7 +100,7 @@ namespace NVDSim
 
 	    uint64_t ftl_queue_length;
 	    uint64_t gc_queue_length;
-	    std::vector<std::vector <uint64_t> > ctrl_queue_length;
+	    std::vector<uint64_t> ctrl_queue_length;
 
 	    std::unordered_map<uint64_t, uint64_t> writes_per_address;
 

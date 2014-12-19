@@ -74,6 +74,7 @@ namespace NVDSim{
 			void bufferDone(uint64_t package, uint64_t die, uint64_t plane);
 			
 			Controller *controller;
+			Buffer *buffer;
 
 			Configuration &cfg;
 			uint64_t id;			
@@ -85,8 +86,7 @@ namespace NVDSim{
 			uint64_t sender;
 			int busy;
 			int firstCheck;
-			Buffer *buffer;
-
+			
 			uint64_t currentDie;
 			uint64_t currentPlane;
 	};

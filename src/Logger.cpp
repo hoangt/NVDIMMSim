@@ -61,6 +61,7 @@ Logger::Logger(Configuration &nv_cfg) :
 	num_read_mapped = 0;
 	num_write_unmapped = 0;
 	num_write_mapped = 0;
+	num_write_queue_handled = 0;
 
 	num_read_refresh_blocked = 0;
 	num_write_refresh_blocked = 0;
@@ -74,10 +75,10 @@ Logger::Logger(Configuration &nv_cfg) :
 	average_queue_latency = 0;
 
 	ftl_queue_length = 0;
-	ctrl_queue_length = vector<vector <uint64_t> >(cfg.NUM_PACKAGES, vector<uint64_t>(cfg.DIES_PER_PACKAGE, 0));
+	ctrl_queue_length = vector<uint64_t>(cfg.NUM_PACKAGES, 0);
 
 	max_ftl_queue_length = 0;
-	max_ctrl_queue_length = vector<vector <uint64_t> >(cfg.NUM_PACKAGES, vector<uint64_t>(cfg.DIES_PER_PACKAGE, 0));
+	max_ctrl_queue_length = vector<uint64_t>(cfg.NUM_PACKAGES, 0);
 
 	first_write_log = true;
 	first_read_log = true;
@@ -278,7 +279,7 @@ void Logger::access_process(uint64_t addr, uint64_t paddr, uint64_t package, Cha
 	{
 	    if(access_map[addr][paddr].size() != 0)
 	    {
-		cerr << "ERROR: NVLogger.access_process() called with address already in access_map. address=0x" << hex << addr << "\n" << dec;
+		    cerr << "ERROR: NVLogger.access_process() called with address already in access_map. address=" << addr << ", paddress=" << paddr << "\n" << dec;
 		abort();
 	    }
 	}
@@ -365,6 +366,14 @@ void Logger::access_cancel(uint64_t addr, uint64_t paddr)
 	    access_map.erase(addr);
 	}
     }
+}
+
+// this is used by the queue handling algorithm in the FTL to log writes that are rendered
+// obsolete by later writes and don't need to be actually issued
+void Logger::access_ftl_handled(uint64_t addr)
+{
+	 this->write();
+	 this->write_queue_handled();
 }
 
 void Logger::log_ftl_queue_event(bool write, std::list<FlashTransaction> *queue)
@@ -601,6 +610,11 @@ void Logger::idle_write()
     num_idle_writes += 1;
 }
 
+void Logger::write_queue_handled()
+{
+	num_write_queue_handled += 1;
+}
+
 void Logger::used_something(uint64_t channel, uint64_t die, uint64_t plane, uint64_t block)
 {
 	channel_use[channel] += 1;
@@ -721,33 +735,30 @@ void Logger::ftlQueueLength(uint64_t length, uint64_t length2)
     }
 }
 
-void Logger::ctrlQueueLength(vector<vector <uint64_t> > length)
+void Logger::ctrlQueueLength(vector<uint64_t> length)
 {
     for(uint64_t i = 0; i < length.size(); i++)
     {
-	for(uint64_t j = 0; j < length[i].size(); j++)
-	{
-	    if(length[i][j] > ctrl_queue_length[i][j])
+	    if(length[i] > ctrl_queue_length[i])
 	    {
-		ctrl_queue_length[i][j] = length[i][j];
+		ctrl_queue_length[i] = length[i];
 	    }
-	    if(length[i][j] > max_ctrl_queue_length[i][j])
+	    if(length[i] > max_ctrl_queue_length[i])
 	    {
-		max_ctrl_queue_length[i][j] = length[i][j];
+		max_ctrl_queue_length[i] = length[i];
 	    }
-	}
     }
 }
 
-void Logger::ctrlQueueSingleLength(uint64_t package, uint64_t die, uint64_t length)
+void Logger::ctrlQueueSingleLength(uint64_t package, uint64_t length)
 {
-    if(length > ctrl_queue_length[package][die])
+    if(length > ctrl_queue_length[package])
     {
-	ctrl_queue_length[package][die] = length;
+	ctrl_queue_length[package] = length;
     }
-    if(length > max_ctrl_queue_length[package][die])
+    if(length > max_ctrl_queue_length[package])
     {
-	max_ctrl_queue_length[package][die] = length;
+	max_ctrl_queue_length[package] = length;
     }
 }
 
@@ -760,10 +771,7 @@ void Logger::ctrlQueueReset()
 {
     for(uint64_t i = 0; i < ctrl_queue_length.size(); i++)
     {
-	for(uint64_t j = 0; j < ctrl_queue_length[i].size(); j++)
-	{
-	    ctrl_queue_length[i][j] = 0;
-	}
+	    ctrl_queue_length[i] = 0;
     }
 }
 
@@ -835,6 +843,7 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"Number of Mapped Reads: " <<num_read_mapped<<"\n";
 	savefile<<"Number of Unmapped Writes: " <<num_write_unmapped<<"\n";
 	savefile<<"Number of Mapped Writes: " <<num_write_mapped<<"\n";
+	savefile<<"Number of Queue Handled Writes: " <<num_write_queue_handled<<"\n";
 	savefile<<"Unmapped Rate: " <<unmapped_rate()<<"\n";
 	savefile<<"Read Unmapped Rate: " <<read_unmapped_rate()<<"\n";
 	savefile<<"Write Unmapped Rate: " <<write_unmapped_rate()<<"\n";
@@ -913,10 +922,7 @@ void Logger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"Maximum Length of Ftl Queue: " <<max_ftl_queue_length<<"\n";
 	for(uint64_t i = 0; i < max_ctrl_queue_length.size(); i++)
 	{
-	    for(uint64_t j = 0; j < max_ctrl_queue_length[i].size(); j++)
-	    {
-		savefile<<"Maximum Length of Controller Queue for Package " << i << ", Die " << j << ": "<<max_ctrl_queue_length[i][j]<<"\n";
-	    }
+		savefile<<"Maximum Length of Controller Queue for Package " << i << ": "<<max_ctrl_queue_length[i]<<"\n";
 	}
 
 	if(cfg.WEAR_LEVEL_LOG)
@@ -1027,6 +1033,7 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
     this_epoch.num_read_mapped = num_read_mapped;
     this_epoch.num_write_unmapped = num_write_unmapped;
     this_epoch.num_write_mapped = num_write_mapped;
+    this_epoch.num_write_queue_handled = num_write_queue_handled;
 		
 	this_epoch.num_read_refresh_blocked = num_read_refresh_blocked; 
 	this_epoch.num_write_refresh_blocked = num_write_refresh_blocked;
@@ -1043,13 +1050,10 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
 
     this_epoch.writes_per_address = writes_per_address;
 
-    this_epoch.ctrl_queue_length = vector<vector<uint64_t> >(cfg.NUM_PACKAGES, vector<uint64_t>(cfg.DIES_PER_PACKAGE, 0));
+    this_epoch.ctrl_queue_length = vector<uint64_t>(cfg.NUM_PACKAGES, 0);
     for(uint64_t i = 0; i < ctrl_queue_length.size(); i++)
     {
-	for(uint64_t j = 0; j < ctrl_queue_length[i].size(); j++)
-	{
-	    this_epoch.ctrl_queue_length[i][j] = ctrl_queue_length[i][j];
-	}
+	    this_epoch.ctrl_queue_length[i] = ctrl_queue_length[i];
     }
 
     this_epoch.idle_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
@@ -1081,6 +1085,7 @@ void Logger::save_epoch(uint64_t cycle, uint64_t epoch)
 	this_epoch.num_read_mapped -= last_epoch.num_read_mapped;
 	this_epoch.num_write_unmapped -= last_epoch.num_write_unmapped;
 	this_epoch.num_write_mapped -= last_epoch.num_write_mapped;
+	this_epoch.num_write_queue_handled -= last_epoch.num_write_queue_handled;
 
 	this_epoch.num_read_refresh_blocked -= last_epoch.num_read_refresh_blocked; 
 	this_epoch.num_write_refresh_blocked -= last_epoch.num_write_refresh_blocked;
@@ -1180,6 +1185,7 @@ void Logger::write_epoch(EpochEntry *e)
 	savefile<<"Number of Mapped Reads: " <<e->num_read_mapped<<"\n";
 	savefile<<"Number of Unmapped Writes: " <<e->num_write_unmapped<<"\n";
 	savefile<<"Number of Mapped Writes: " <<e->num_write_mapped<<"\n";
+	savefile<<"Number of Queue Handled Writes: " <<e->num_write_queue_handled<<"\n";
 
 	if(cfg.REFRESH_ENABLE)
 	{
@@ -1211,10 +1217,7 @@ void Logger::write_epoch(EpochEntry *e)
 	savefile<<"Length of Ftl Queue: " <<e->ftl_queue_length<<"\n";
 	for(uint64_t i = 0; i < e->ctrl_queue_length.size(); i++)
 	{
-	    for(uint64_t j = 0; j < e->ctrl_queue_length[i].size(); j++)
-	    {
-		savefile<<"Length of Controller Queue for Package " << i << ", Die " << j << ": "<<e->ctrl_queue_length[i][j]<<"\n";
-	    }
+		savefile<<"Length of Controller Queue for Package " << i << ": "<<e->ctrl_queue_length[i]<<"\n";
 	}
 
 	if(cfg.WEAR_LEVEL_LOG)

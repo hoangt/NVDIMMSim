@@ -275,6 +275,7 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"Number of Mapped Reads: " <<num_read_mapped<<"\n";
 	savefile<<"Number of Unmapped Writes: " <<num_write_unmapped<<"\n";
 	savefile<<"Number of Mapped Writes: " <<num_write_mapped<<"\n";
+	savefile<<"Number of Queue Handled Writes: " <<num_write_queue_handled<<"\n";
 	savefile<<"Unmapped Rate: " <<unmapped_rate()<<"\n";
 	savefile<<"Read Unmapped Rate: " <<read_unmapped_rate()<<"\n";
 	savefile<<"Write Unmapped Rate: " <<write_unmapped_rate()<<"\n";
@@ -337,10 +338,7 @@ void GCLogger::save(uint64_t cycle, uint64_t epoch)
 	savefile<<"Maximum Length of GC Queue: " <<max_gc_queue_length<<"\n";
 	for(uint64_t i = 0; i < max_ctrl_queue_length.size(); i++)
 	{
-	    for(uint64_t j = 0; j < max_ctrl_queue_length[i].size(); j++)
-	    {
-		savefile<<"Maximum Length of Controller Queue for Package " << i << ", Die " << j << ": "<<max_ctrl_queue_length[i][j]<<"\n";
-	    }
+		savefile<<"Maximum Length of Controller Queue for Package " << i << ": "<<max_ctrl_queue_length[i]<<"\n";
 	}
 
 	if(cfg.WEAR_LEVEL_LOG)
@@ -461,6 +459,7 @@ void GCLogger::save_epoch(uint64_t cycle, uint64_t epoch)
     this_epoch.num_read_mapped = num_read_mapped;
     this_epoch.num_write_unmapped = num_write_unmapped;
     this_epoch.num_write_mapped = num_write_mapped;
+    this_epoch.num_write_queue_handled = num_write_queue_handled;
 		
     this_epoch.average_latency = average_latency;
     this_epoch.average_read_latency = average_read_latency;
@@ -475,13 +474,10 @@ void GCLogger::save_epoch(uint64_t cycle, uint64_t epoch)
 
     this_epoch.writes_per_address = writes_per_address;
     
-    this_epoch.ctrl_queue_length = vector<vector<uint64_t> >(cfg.NUM_PACKAGES, vector<uint64_t>(cfg.DIES_PER_PACKAGE, 0));
+    this_epoch.ctrl_queue_length = vector<uint64_t>(cfg.NUM_PACKAGES, 0);
     for(uint64_t i = 0; i < ctrl_queue_length.size(); i++)
     {
-	for(uint64_t j = 0; j < ctrl_queue_length[i].size(); j++)
-	{
-	    this_epoch.ctrl_queue_length[i][j] = ctrl_queue_length[i][j];
-	}
+	    this_epoch.ctrl_queue_length[i] = ctrl_queue_length[i];
     }
 
     this_epoch.idle_energy = vector<double>(cfg.NUM_PACKAGES, 0.0);
@@ -516,6 +512,7 @@ void GCLogger::save_epoch(uint64_t cycle, uint64_t epoch)
 	this_epoch.num_read_mapped -= last_epoch.num_read_mapped;
 	this_epoch.num_write_unmapped -= last_epoch.num_write_unmapped;
 	this_epoch.num_write_mapped -= last_epoch.num_write_mapped;
+	this_epoch.num_write_queue_handled -= last_epoch.num_write_queue_handled;
 	
 	this_epoch.average_latency -= last_epoch.average_latency;
 	this_epoch.average_read_latency -= last_epoch.average_read_latency;
@@ -617,6 +614,7 @@ void GCLogger::write_epoch(EpochEntry *e)
 	savefile<<"Number of Mapped Reads: " <<e->num_read_mapped<<"\n";
 	savefile<<"Number of Unmapped Writes: " <<e->num_write_unmapped<<"\n";
 	savefile<<"Number of Mapped Writes: " <<e->num_write_mapped<<"\n";
+	savefile<<"Number of Queue Handled Writes: " <<e->num_write_queue_handled<<"\n";
 
 	savefile<<"\nThroughput and Latency Data: \n";
 	savefile<<"========================\n";
@@ -642,10 +640,7 @@ void GCLogger::write_epoch(EpochEntry *e)
 	savefile<<"Length of GC Queue: " <<e->gc_queue_length<<"\n";
 	for(uint64_t i = 0; i < e->ctrl_queue_length.size(); i++)
 	{
-	    for(uint64_t j = 0; j < e->ctrl_queue_length[i].size(); j++)
-	    {
-		savefile<<"Length of Controller Queue for Package " << i << ", Die " << j << ": "<<e->ctrl_queue_length[i][j]<<"\n";
-	    }
+		savefile<<"Length of Controller Queue for Package " << i << ": "<<e->ctrl_queue_length[i]<<"\n";
 	}
 
 	if(cfg.WEAR_LEVEL_LOG)

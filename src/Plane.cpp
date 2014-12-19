@@ -97,7 +97,7 @@ void Plane::write(ChannelPacket *busPacket){
 void Plane::writeDone(ChannelPacket *busPacket)
 {
 	blocks[busPacket->block].write(cfg.GARBAGE_COLLECT, busPacket->page, dataReg->data);
-	    
+
     // The data packet is now done being used, so it can be deleted.
     delete dataReg;
     dataReg = NULL;

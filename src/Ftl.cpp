@@ -423,68 +423,65 @@ bool Ftl::attemptAdd(FlashTransaction &t, std::list<FlashTransaction> *queue, ui
 
 bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 {
-    if(t.transactionType == DATA_WRITE)
-    {
-	// see if this write replaces another already in the transaction queue
-        // also make sure that no read in the queue references the old write
-	// if both conditions hold remove the old write from the queue it is no longer neccessary
-	list<FlashTransaction>::iterator it;
-	int count = 0;
-	bool rw_conflict = false;
-	//cout << "checking queue for depreciated writes \n";
-	for (it = transQueue.begin(); it != transQueue.end(); it++)
+	if(t.transactionType == DATA_WRITE)
 	{
-	    // don't replace the write if we're already working on it
-	    if((*it).address == t.address && currentTransaction.address != t.address && (*it).transactionType == DATA_WRITE)
-	    {
-	        list<FlashTransaction>::iterator it2;
-	        for(it2 = transQueue.begin(); it2 != it; it2++)
-	        {
-		    if((*it2).address == t.address && (*it2).transactionType == DATA_READ)
-		    {
-		        rw_conflict = true;
-			//cout << "rw conflict detected!! \n";
-		        break;
-		    }
-		}
-		if(!rw_conflict)
+		// see if this write replaces another already in the transaction queue
+		// also make sure that no read in the queue references the old write
+		// if both conditions hold remove the old write from the queue it is no longer neccessary
+		list<FlashTransaction>::iterator it;
+		int count = 0;
+		bool rw_conflict = false;
+		//cout << "checking queue for depreciated writes \n";
+		for (it = transQueue.begin(); it != transQueue.end(); it++)
 		{
-		    if(cfg.LOGGING)
-		    {
-		        // access_process for that write is called here since its over now.
-		        log->access_process(t.address, t.address, 0, WRITE);
-		    
-			// stop_process for that write is called here since its over now.
-			log->access_stop(t.address, t.address);
-		    }
-		    // issue a callback for this write
-		    if (parent->WriteDataDone != NULL){
-		        (*parent->WriteDataDone)(parent->systemID, (*it).address, currentClockCycle, true);
-		    }
-		    transQueue.erase(it);
-		    //cout << "Replaced a write!! \n";
-		    break;
+			// don't replace the write if we're already working on it
+			if((*it).address == t.address && currentTransaction.address != t.address && (*it).transactionType == DATA_WRITE)
+			{
+				list<FlashTransaction>::iterator it2;
+				for(it2 = transQueue.begin(); it2 != it; it2++)
+				{
+					if((*it2).address == t.address && (*it2).transactionType == DATA_READ)
+					{
+						rw_conflict = true;
+						//cout << "rw conflict detected!! \n";
+						break;
+					}
+				}
+				if(!rw_conflict)
+				{
+					if(cfg.LOGGING)
+					{
+						// access_process for that write is called here since its over now.
+						log->access_ftl_handled(t.address);
+					}
+					// issue a callback for this write
+					if (parent->WriteDataDone != NULL){
+						(*parent->WriteDataDone)(parent->systemID, (*it).address, currentClockCycle, true);
+					}
+					transQueue.erase(it);
+					//cout << "Replaced a write!! \n";
+					break;
+				}
+			}
+			count++;
 		}
-	    }
-	    count++;
+		// if we erased the write that this write replaced then we should definitely
+		// always have room for this write
+		return attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
 	}
-	// if we erased the write that this write replaced then we should definitely
-	// always have room for this write
-	return attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
-    }
-    else
-    {
-	bool success =  attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
-	if (success == true)
+	else
 	{
-	    if( transQueue.size() == 1)
-	    {
-		read_pointer = transQueue.begin();
-	    }
+		bool success =  attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
+		if (success == true)
+		{
+			if( transQueue.size() == 1)
+			{
+				read_pointer = transQueue.begin();
+			}
+		}
+		return success;
 	}
-	return success;
-    }
-    return false;
+	return false;
 }
 
 bool Ftl::addTransaction(FlashTransaction &t){

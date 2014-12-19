@@ -148,8 +148,7 @@ namespace NVDSim
 			float SYSTEM_CYCLE;
 			
 			uint64_t FTL_QUEUE_LENGTH;
-			uint64_t CTRL_READ_QUEUE_LENGTH;
-			uint64_t CTRL_WRITE_QUEUE_LENGTH;
+			uint64_t CTRL_QUEUE_LENGTH;
 			
 			float READ_I;
 			float WRITE_I;
@@ -254,8 +253,7 @@ namespace NVDSim
 				CYCLE_TIME(1.51),
 				SYSTEM_CYCLE(1.51),
 				FTL_QUEUE_LENGTH(10),
-				CTRL_READ_QUEUE_LENGTH(0),
-				CTRL_WRITE_QUEUE_LENGTH(0),
+				CTRL_QUEUE_LENGTH(0),
 				READ_I(15),
 				WRITE_I(35),
 				ERASE_I(35),
