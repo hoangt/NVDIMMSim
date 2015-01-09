@@ -104,10 +104,10 @@ namespace NVDSim
 			// Scheduling Options
 			else if (key.compare("SCHEDULE") == 0)
 				convert_bool(cfg.SCHEDULE, value, key);
-			else if (key.compare("WRITE_ON_QUEUE_SIZE") == 0)
-				convert_bool(cfg.WRITE_ON_QUEUE_SIZE, value, key);
-			else if (key.compare("WRITE_QUEUE_LIMIT") == 0)
-				convert_uint64_t(cfg.WRITE_QUEUE_LIMIT, value, key);
+			else if (key.compare("WRITE_HIGH_THRESHOLD") == 0)
+				convert_uint64_t(cfg.WRITE_HIGH_THRESHOLD, value, key);
+			else if (key.compare("WRITE_LOW_THRESHOLD") == 0)
+				convert_uint64_t(cfg.WRITE_LOW_THRESHOLD, value, key);
 			else if (key.compare("IDLE_WRITE") == 0)
 				convert_bool(cfg.IDLE_WRITE, value, key);
 			else if (key.compare("DELAY_WRITE") == 0)

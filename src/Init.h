@@ -51,8 +51,8 @@ namespace NVDSim
 			bool DEBUG_TRANSLATION;
 	
 			bool SCHEDULE;
-			bool WRITE_ON_QUEUE_SIZE;
-			uint64_t WRITE_QUEUE_LIMIT;
+			uint64_t WRITE_HIGH_THRESHOLD;
+			uint64_t WRITE_LOW_THRESHOLD;
 			bool IDLE_WRITE;
 			bool DELAY_WRITE;
 			uint64_t DELAY_WRITE_CYCLES;
@@ -174,8 +174,8 @@ namespace NVDSim
 	                Configuration():
 			        DEBUG_TRANSLATION(0),
 				SCHEDULE(0),
-				WRITE_ON_QUEUE_SIZE(0),
-				WRITE_QUEUE_LIMIT(20),
+				WRITE_HIGH_THRESHOLD(0),
+				WRITE_LOW_THRESHOLD(0),
 				IDLE_WRITE(0),
 				DELAY_WRITE(0),
 				DELAY_WRITE_CYCLES(50),

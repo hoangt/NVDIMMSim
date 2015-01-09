@@ -109,6 +109,7 @@ namespace NVDSim{
 
 		private:
 			bool* paused;
+			bool* forced_writing;
 			uint64_t die_counter;
 
 			uint64_t queue_access_counter;

@@ -56,9 +56,11 @@ Controller::Controller(Configuration &nv_cfg, NVDIMM* parent, Logger* l) :
 	pendingPackets = vector<list <ChannelPacket *> >(cfg.NUM_PACKAGES, list<ChannelPacket *>());
 
 	paused = new bool [cfg.NUM_PACKAGES];
+	forced_writing = new bool [cfg.NUM_PACKAGES]; // used when scheduling to avoid descending into FIFO mode
 	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    paused[i] = false;
+	    forced_writing[i] = false;
 	}
 
 	die_counter = 0;
@@ -292,6 +294,8 @@ void Controller::update(void){
 		Channel* channel_pointer;
 		// iterate throught the queue for this channel each time until we find the oldest thing that we can actually issue
 		list<ChannelPacket*>::iterator ctrl_it = ctrlQueues[i].begin();
+		// use this iterator to save what we issue when scheduling so we can erase it later
+		list<ChannelPacket*>::iterator erase_it = ctrl_it;
 		while(!done)
 		{
 			if(ctrl_it != ctrlQueues[i].end())
@@ -306,6 +310,7 @@ void Controller::update(void){
 				}
 			}
 			
+			// make sure that we have something to do and we're not already doing something
 			if ((ctrl_it != ctrlQueues[i].end() || (cfg.REFRESH_ENABLE && refreshCountdown[i] <= 0 && !refresh_skip)) && outgoingPackets[i]==NULL)
 			{
 				// check the status of the die
@@ -315,6 +320,8 @@ void Controller::update(void){
 					writePausingCancelation(*ctrl_it);
 				}
 				
+				// this part of the code is basically deciding what packet we're going to try this round
+				// **********************************
 				// if we are simulating refreshes and its time to issue an autorefresh to this
 				// die, then do so
 				ChannelPacket *potentialPacket;
@@ -323,9 +330,11 @@ void Controller::update(void){
 					if(!ctrlQueues[i].empty())
 					{
 						// this prevents a refersh from coming between a write and data packet
+						// this works with scheduling because the data would not have been sent if there's a read waiting
 						if(ctrlQueues[i].front()->busPacketType == WRITE)
 						{
 							potentialPacket = *ctrl_it;
+							erase_it = ctrl_it;
 						}
 						else
 						{
@@ -339,9 +348,91 @@ void Controller::update(void){
 						potentialPacket = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, 0, die_rpointer[i], i, NULL);
 					}
 				}
+				// if we are simulating read around write scheduling, then see where the first read is
+				else if(cfg.SCHEDULE)
+				{
+					// check the thresholds to see if we have to force some write to make room in the queue
+					if(ctrlQueues[i].size() > cfg.WRITE_HIGH_THRESHOLD)
+					{
+						forced_writing[i] = true;
+					}
+					else if(forced_writing[i] && ctrlQueues[i].size() < cfg.WRITE_LOW_THRESHOLD)
+					{
+						forced_writing[i] = false;
+					}
+
+					// if the front of the queue is data 
+					// and we currently are not at the threshold for issuing writes
+					// then we need to look for a read
+					if((*ctrl_it)->busPacketType == DATA && !forced_writing[i])
+					{
+						// save the  current iterator in case there are no reads to find
+						list<ChannelPacket*>::iterator ctrl_save = ctrl_it;
+						// make a temporary list of the write addresses to check for hazards
+						list<uint64_t> temp_write_addrs;
+						bool read_found = false;
+						while(!read_found)
+						{
+							ctrl_it++;
+							
+							// are we at the end?
+							if(ctrl_it == ctrlQueues[i].end())
+							{
+								break;
+							}
+
+							// if this is a write command push its address onto our temp list
+							if((*ctrl_it)->busPacketType == WRITE)
+							{
+								temp_write_addrs.push_back((*ctrl_it)->virtualAddress);
+							}
+							
+							// we need to check for data hazards
+							else if((*ctrl_it)->busPacketType == READ)
+							{
+								// this might be way too slow for this, we'll see
+								bool hazard_found = false;
+								list<uint64_t>::iterator haz_it;
+								for(haz_it = temp_write_addrs.begin(); haz_it != temp_write_addrs.end(); haz_it++)
+								{
+									if((*haz_it) == (*ctrl_it)->virtualAddress)
+									{
+										hazard_found = true;
+										break;
+									}
+								}
+
+								if(!hazard_found)
+								{
+									read_found = true;
+									break;
+								}
+							}
+						}
+						if(read_found)
+						{
+							potentialPacket = *ctrl_it;
+							erase_it = ctrl_it;
+						}
+						else
+						{
+							potentialPacket = *ctrl_save;
+							erase_it = ctrl_save;
+						}
+					}
+					// otherwise if the front of the queue is a write then data has already been sent
+					// and we should just go through with this (or cancel if we're being that complicated)
+					// OR if its not the other two things, then its a read and we're good
+					else
+					{
+						potentialPacket = *ctrl_it;
+						erase_it = ctrl_it;
+					}
+				}
 				else
 				{
 					potentialPacket = *ctrl_it;
+					erase_it = ctrl_it;
 				}
 				
 				// figure out which channel we'll be using depending on what we're sending, data or command stuff
@@ -354,6 +445,8 @@ void Controller::update(void){
 					channel_pointer = (*packages)[i].channel;
 				}
 				
+				// this part of the code is sending the packet that the previous section decided on
+				// ******************************
 				// repeat refresh so don't do anything
 				if(potentialPacket->busPacketType != AUTO_REFRESH || (allDiesRefreshReady(i) && outgoingPackets[i] == NULL))
 				{
@@ -407,7 +500,7 @@ void Controller::update(void){
 							}
 							else
 							{
-								ctrlQueues[i].erase(ctrl_it);
+								ctrlQueues[i].erase(erase_it);
 								parentNVDIMM->queuesNotFull();
 							}
 							
@@ -453,7 +546,7 @@ void Controller::update(void){
 									channelBeatsLeft[i] += CHANNEL_TURN_CYCLES;
 								}							
 							}
-							done = true;;
+							done = true;
 						}
 						// couldn't get the channel 
 						else
@@ -608,7 +701,8 @@ void Controller::update(void){
 	}
 
 	//See if any read data is ready to return
-	while (!returnTransaction.empty()){
+	while (!returnTransaction.empty())
+	{
 		if(cfg.FRONT_BUFFER)
 		{
 			// attempt to add the return transaction to the host channel buffer
