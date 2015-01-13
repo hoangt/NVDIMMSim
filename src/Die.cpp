@@ -390,6 +390,9 @@ void Die::update(void){
 					    }
 					}
 
+					// tell the controller that this plane is no longer busy
+					buffer->channel->controller->planeFree(currentCommand->package, currentCommand->die, currentCommand->plane);
+
 					// Delete the memory allocated for the current command to prevent memory leaks.
 					delete currentCommand;
 				}

@@ -92,6 +92,7 @@ namespace NVDSim{
 			bool dataReady(uint64_t package, uint64_t die, uint64_t plane);
 			void writePausingCancelation(ChannelPacket *packet);
 			bool allDiesRefreshReady(uint64_t package);
+			void planeFree(uint64_t package, uint64_t die, uint64_t plane);
 
 			void sendQueueLength(void);
 
@@ -110,6 +111,7 @@ namespace NVDSim{
 		private:
 			bool* paused;
 			bool* forced_writing;
+			bool*** busy_scoreboard;
 			uint64_t die_counter;
 
 			uint64_t queue_access_counter;

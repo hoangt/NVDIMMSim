@@ -57,10 +57,22 @@ Controller::Controller(Configuration &nv_cfg, NVDIMM* parent, Logger* l) :
 
 	paused = new bool [cfg.NUM_PACKAGES];
 	forced_writing = new bool [cfg.NUM_PACKAGES]; // used when scheduling to avoid descending into FIFO mode
+	busy_scoreboard = new bool** [cfg.NUM_PACKAGES]; // I'm not sure if this is better or worse than just calling dieBusy before picking a potential packet
+	                                                 // this could be seen as keeping two copies of the same information around but its also a more simplified
+	                                                 // version of that information so its useful in the context of this controller
 	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
 	{
 	    paused[i] = false;
 	    forced_writing[i] = false;
+	    busy_scoreboard[i] = new bool* [cfg.DIES_PER_PACKAGE];
+	    for(uint64_t j = 0; j < cfg.DIES_PER_PACKAGE; j++)
+	    {
+		    busy_scoreboard[i][j] = new bool [cfg.PLANES_PER_DIE];
+		    for(uint64_t k = 0; k < cfg.PLANES_PER_DIE; k++)
+		    {
+			    busy_scoreboard[i][j][k] = false;
+		    }
+	    }
 	}
 
 	die_counter = 0;
@@ -213,6 +225,10 @@ void Controller::receiveFromChannel(ChannelPacket *busPacket){
 			break;
 	}
 
+	// update the busy scoreboard to reflect the fact that this plane is now free
+	busy_scoreboard[busPacket->package][busPacket->die][busPacket->plane] = false;
+	cout << "package " << busPacket->package << " die " << busPacket->die << " plane " << busPacket->plane << " marked as free \n";
+
 	// Delete the ChannelPacket since READ is done. This must be done to prevent memory leaks.
 	delete busPacket;
 }
@@ -295,7 +311,9 @@ void Controller::update(void){
 		// iterate throught the queue for this channel each time until we find the oldest thing that we can actually issue
 		list<ChannelPacket*>::iterator ctrl_it = ctrlQueues[i].begin();
 		// use this iterator to save what we issue when scheduling so we can erase it later
-		list<ChannelPacket*>::iterator erase_it = ctrl_it;
+		//list<ChannelPacket*>::iterator temp_it = ctrl_it;
+		// make a temporary list of the write addresses to check for hazards
+		list<uint64_t> temp_write_addrs;
 		while(!done)
 		{
 			if(ctrl_it != ctrlQueues[i].end())
@@ -334,7 +352,6 @@ void Controller::update(void){
 						if(ctrlQueues[i].front()->busPacketType == WRITE)
 						{
 							potentialPacket = *ctrl_it;
-							erase_it = ctrl_it;
 						}
 						else
 						{
@@ -352,7 +369,7 @@ void Controller::update(void){
 				else if(cfg.SCHEDULE)
 				{
 					// check the thresholds to see if we have to force some write to make room in the queue
-					if(ctrlQueues[i].size() > cfg.WRITE_HIGH_THRESHOLD)
+					if(!forced_writing[i] && ctrlQueues[i].size() > cfg.WRITE_HIGH_THRESHOLD)
 					{
 						forced_writing[i] = true;
 					}
@@ -368,27 +385,27 @@ void Controller::update(void){
 					{
 						// save the  current iterator in case there are no reads to find
 						list<ChannelPacket*>::iterator ctrl_save = ctrl_it;
-						// make a temporary list of the write addresses to check for hazards
-						list<uint64_t> temp_write_addrs;
+						
 						bool read_found = false;
 						while(!read_found)
 						{
-							ctrl_it++;
+							ctrl_it++;					
 							
 							// are we at the end?
 							if(ctrl_it == ctrlQueues[i].end())
 							{
 								break;
 							}
+							
+							//cout << "checking packet of type " << (*ctrl_it)->busPacketType << " with address " << (*ctrl_it)->virtualAddress << "\n";
 
 							// if this is a write command push its address onto our temp list
-							if((*ctrl_it)->busPacketType == WRITE)
+							if((*ctrl_it)->busPacketType == WRITE || (*ctrl_it)->busPacketType == GC_WRITE)
 							{
 								temp_write_addrs.push_back((*ctrl_it)->virtualAddress);
-							}
-							
+							}			
 							// we need to check for data hazards
-							else if((*ctrl_it)->busPacketType == READ)
+							else if((*ctrl_it)->busPacketType == READ && !busy_scoreboard[(*ctrl_it)->package][(*ctrl_it)->die][(*ctrl_it)->plane])
 							{
 								// this might be way too slow for this, we'll see
 								bool hazard_found = false;
@@ -411,28 +428,105 @@ void Controller::update(void){
 						}
 						if(read_found)
 						{
+							cout << "Found read \n";
+							cout << "Used packet of type " << (*ctrl_it)->busPacketType << " with address " << (*ctrl_it)->virtualAddress << "\n";
 							potentialPacket = *ctrl_it;
-							erase_it = ctrl_it;
 						}
+						else if(!busy_scoreboard[(*ctrl_save)->package][(*ctrl_save)->die][(*ctrl_save)->plane])
+						{
+							cout << "Used front packet \n";
+							cout << "It was packet of type " << (*ctrl_save)->busPacketType << " with address " << (*ctrl_save)->virtualAddress << "\n";
+							potentialPacket = *ctrl_save;
+							ctrl_it = ctrl_save;
+						}
+						// that plane is busy lets try something else
 						else
 						{
-							potentialPacket = *ctrl_save;
-							erase_it = ctrl_save;
+							ctrl_it++;
+							continue;
 						}
 					}
 					// otherwise if the front of the queue is a write then data has already been sent
 					// and we should just go through with this (or cancel if we're being that complicated)
 					// OR if its not the other two things, then its a read and we're good
+					// we could have skipped though and in that case we need to be careful that we don't issue a read that
+					// is going to that write location
 					else
 					{
-						potentialPacket = *ctrl_it;
-						erase_it = ctrl_it;
+						// make sure that this plane is actually currently available
+						if(!busy_scoreboard[(*ctrl_it)->package][(*ctrl_it)->die][(*ctrl_it)->plane])
+						{					
+							// this might be way too slow for this, we'll see
+							bool hazard_found = false;
+							if((*ctrl_it)->busPacketType == READ)
+							{
+								list<uint64_t>::iterator haz_it;
+								for(haz_it = temp_write_addrs.begin(); haz_it != temp_write_addrs.end(); haz_it++)
+								{
+									if((*haz_it) == (*ctrl_it)->virtualAddress)
+									{
+										hazard_found = true;
+										break;
+									}
+								}
+							}
+							
+							if(!hazard_found)
+							{
+								cout << "Front not data so uesd that \n";
+								cout << "It was packet of type " << (*ctrl_it)->busPacketType << " with address " << (*ctrl_it)->virtualAddress << "\n";
+								potentialPacket = *ctrl_it;
+							}
+							else
+							{
+								ctrl_it++;
+								continue;
+							}
+						}
+						// that plane is busy lets try something else
+						else
+						{
+							ctrl_it++;
+							continue;
+						}
 					}
 				}
 				else
 				{
-					potentialPacket = *ctrl_it;
-					erase_it = ctrl_it;
+					// make sure that this plane is actually currently available
+					if(!busy_scoreboard[(*ctrl_it)->package][(*ctrl_it)->die][(*ctrl_it)->plane])
+					{
+						// this might be way too slow for this, we'll see
+						bool hazard_found = false;
+						if((*ctrl_it)->busPacketType == READ)
+						{
+							list<uint64_t>::iterator haz_it;
+							for(haz_it = temp_write_addrs.begin(); haz_it != temp_write_addrs.end(); haz_it++)
+							{
+								if((*haz_it) == (*ctrl_it)->virtualAddress)
+								{
+									hazard_found = true;
+									break;
+								}
+							}
+						}
+						
+						if(!hazard_found)
+						{
+							potentialPacket = *ctrl_it;
+						}
+						else
+						{
+							ctrl_it++;
+							continue;
+						}
+					}
+					// that plane is busy lets try something else
+					else
+					{
+						ctrl_it++;
+						continue;
+					}
 				}
 				
 				// figure out which channel we'll be using depending on what we're sending, data or command stuff
@@ -500,7 +594,7 @@ void Controller::update(void){
 							}
 							else
 							{
-								ctrlQueues[i].erase(erase_it);
+								ctrlQueues[i].erase(ctrl_it);
 								parentNVDIMM->queuesNotFull();
 							}
 							
@@ -561,8 +655,15 @@ void Controller::update(void){
 						// see if we just failed to schedule a data packet
 						// if so make sure we don't schedule its write without it
 						if((*ctrl_it)->busPacketType == DATA)
+						{
 							data_skip = true;
+							temp_write_addrs.push_back((*ctrl_it)->virtualAddress);
+						}
+						// mark this package / die / plane as busy so we don't keep trying to send stuff there
+						busy_scoreboard[(*ctrl_it)->package][(*ctrl_it)->die][(*ctrl_it)->plane] = true;
+						cout << "package " << (*ctrl_it)->package << " die " << (*ctrl_it)->die << " plane " << (*ctrl_it)->plane << " marked as busy \n";
 						// try the next command in the queue to see if its die is available
+						//cout << "advancing the iterator to try another die \n";
 						ctrl_it++;
 						continue;
 					}
@@ -586,6 +687,8 @@ void Controller::update(void){
 			// no pending command for this channel and not time for a refresh
 			else
 			{
+
+				cout << "nothing left to schedule \n";
 				done = true;
 			}
 		} 
@@ -802,6 +905,12 @@ bool Controller::allDiesRefreshReady(uint64_t package)
 	{
 		return true;
 	}
+}
+
+void Controller::planeFree(uint64_t package, uint64_t die, uint64_t plane)
+{
+	busy_scoreboard[package][die][plane] = false;
+	cout << "package " << package << " die " << die << " plane " << plane << " marked as free \n";
 }
 
 bool Controller::dataReady(uint64_t package, uint64_t die, uint64_t plane)
