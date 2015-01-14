@@ -41,14 +41,30 @@
  * The output should be fairly straightforward. If you would like to see the writes
  * as they take place, change OUTPUT= 0; to OUTPUT= 1;
  */
-#include <iostream>
-#include "FlashConfiguration.h"
-#include "FlashTransaction.h"
-#include <time.h>
+
 #include "TraceBasedSim.h"
 
 #define NUM_WRITES 1000
 #define SIM_CYCLES 10000000
+
+const uint64_t MAX_PENDING = 1024;
+const uint64_t MIN_PENDING = 1023;
+uint64_t complete = 0;
+uint64_t pending = 0;
+uint64_t throttle_count = 0;
+uint64_t throttle_cycles = 0;
+uint64_t final_cycles = 0;
+uint64_t speedup_factor = 0;
+
+// The maximum transaction count for this simuation
+uint64_t START_TRANS = 0;
+uint64_t MAX_TRANS = 0;
+
+// The cycle counter is used to keep track of what cycle we are on.
+uint64_t trace_cycles = 0;
+
+uint64_t last_clock = 0;
+uint64_t CLOCK_DELAY = 1000000;
 
 /*temporary assignments for externed variables.
  * This should really be done with another class
@@ -74,14 +90,100 @@ uint COMMAND_TIME= 10;
 using namespace NVDSim;
 using namespace std;
 
-int main(void){
+void print_usage()
+{
+	cout << "NVDIMM Trace Based Sim Usage \n\n";
+	cout << " -t --trace_file <filename>       Trace file to use \n";
+	cout << " -s --start_trans <trans number>  Transaction to start on \n";
+	cout << " -e --end_trans <trans number>    Transaction to end on \n";
+	cout << " -u --speedup <speedup factor>    The amount to speedup the trace \n";
+	cout << " -h --help                        Display the usage information \n";
+}
+
+int main(int argc, char *argv[]){
+
+	int c;
+	string tracefile = "traces/test.txt";
+	bool trace_set = false;
+	stringstream ss;
+	
+	// the array of options that we will use
+	const struct option long_options[] = {
+		{ "trace_file", required_argument, NULL, 't'},
+		{ "start_trans", required_argument, NULL, 's'},
+		{ "end_trans", required_argument, NULL, 'e'},
+		{ "speedup", required_argument, NULL, 'u'},
+		{ "help", no_argument, NULL, 'h' },
+		{ NULL, no_argument, NULL, 0 }		
+	};
+
+	while((c = getopt_long(argc, argv, "t:s:e:u:h", long_options, NULL)) != -1)
+	{
+		switch(c)
+		{
+		case 't':
+			trace_set = true;
+			tracefile = string(optarg);
+			cout << "Using trace file " << tracefile << "\n";
+			break;
+		case 's':
+			ss << optarg;
+			ss >> START_TRANS;
+			ss.clear(); // safety
+			break;       
+		case 'e':
+			ss << optarg;
+			ss >> MAX_TRANS;
+			ss.clear(); // safety
+			break;
+		case 'u':
+			ss << optarg;
+			ss >> speedup_factor;
+			cout << "speedup factor is now " << speedup_factor << "\n";
+			ss.clear(); // safety
+			break;
+		case 'h':
+			print_usage();
+			break;
+		case '?':
+			break;
+		default:
+			cout << "unknown option. \n";
+			print_usage();
+			abort();
+		}
+	}
+
 	test_obj t;
-	t.run_test();
+	if(!trace_set)
+	{		
+		t.run_test();
+	}
+	else
+	{
+		t.run_trace(tracefile);
+	}
 	return 0;
+}
+
+void transaction_complete(uint64_t clock_cycle)
+{
+	complete++;
+	pending--;
+
+	if ((complete % 1000 == 0) || (clock_cycle - last_clock > CLOCK_DELAY))
+	{
+		cout << "complete= " << complete << "\t\tpending= " << pending << "\t\t cycle_count= "<< clock_cycle << "\t\tthrottle_count=" << throttle_count << "\n";
+		last_clock = clock_cycle;
+	}
+
+	//if (complete == 10000000)
+	//	abort();
 }
 
 void test_obj::read_cb(uint64_t id, uint64_t address, uint64_t cycle, bool mapped){
     cout<<"[Callback] read complete: "<<id<<" "<<address<<" cycle="<<cycle<<" mapped="<<mapped<<endl;
+    transaction_complete(cycle);
 }
 
 void test_obj::crit_cb(uint64_t id, uint64_t address, uint64_t cycle, bool mapped){
@@ -90,6 +192,7 @@ void test_obj::crit_cb(uint64_t id, uint64_t address, uint64_t cycle, bool mappe
 
 void test_obj::write_cb(uint64_t id, uint64_t address, uint64_t cycle, bool mapped){
 	cout<<"[Callback] write complete: "<<id<<" "<<address<<" cycle="<<cycle<<endl;
+	transaction_complete(cycle);
 }
 
 void test_obj::power_cb(uint64_t id, vector<vector<double>> data, uint64_t cycle, bool mapped){
@@ -105,6 +208,160 @@ void test_obj::power_cb(uint64_t id, vector<vector<double>> data, uint64_t cycle
 	      }
 	    }
 	}
+}
+
+void test_obj::run_trace(string tracefile)
+{
+	clock_t start= clock(), end;
+	NVDIMM *NVDimm= new NVDIMM(1,"ini/samsung_K9XXG08UXM_gc_test.ini","","");
+	//NVDIMM *NVDimm= new NVDIMM(1,"ini/PCM_TEST.ini","ini/def_system.ini","","");
+
+	typedef CallbackBase<void,uint64_t,uint64_t,uint64_t,bool> Callback_t;
+	Callback_t *r = new Callback<test_obj, void, uint64_t, uint64_t, uint64_t, bool>(this, &test_obj::read_cb);
+	Callback_t *c = new Callback<test_obj, void, uint64_t, uint64_t, uint64_t, bool>(this, &test_obj::crit_cb);
+	Callback_t *w = new Callback<test_obj, void, uint64_t, uint64_t, uint64_t, bool>(this, &test_obj::write_cb);
+	Callback_v *p = new Callback<test_obj, void, uint64_t, vector<vector<double>>, uint64_t, bool>(this, &test_obj::power_cb);
+	NVDimm->RegisterCallbacks(r, c, w, p);
+
+	// Open input file
+	ifstream inFile;
+	inFile.open(tracefile, ifstream::in);
+	if (!inFile.is_open())
+	{
+		cout << "ERROR: Failed to load tracefile: " << tracefile << "\n";
+		abort();
+	}
+	
+
+	char char_line[256];
+	string line;
+	bool done = false;
+	uint64_t trans_count = 0;
+
+	// if we're fast forwarding some
+	if(START_TRANS != 0)
+	{
+		while(inFile.good() && !done)
+		{
+			inFile.getline(char_line, 256);
+			trans_count++;
+			if(trans_count >= START_TRANS)
+			{
+				done = true;
+			}
+		}		
+	}
+	done = false;
+
+	while (inFile.good() && !done)
+	{
+		// Read the next line.
+		inFile.getline(char_line, 256);
+		line = (string)char_line;
+
+		// Filter comments out.
+		size_t pos = line.find("#");
+		line = line.substr(0, pos);
+
+		// Strip whitespace from the ends.
+		line = strip(line);
+
+		// Filter newlines out.
+		if (line.empty())
+			continue;
+
+		// Split and parse.
+		list<string> split_line = split(line);
+
+		if (split_line.size() != 3)
+		{
+			cout << "ERROR: Parsing trace failed on line:\n" << line << "\n";
+			cout << "There should be exactly three numbers per line\n";
+			cout << "There are " << split_line.size() << endl;
+			abort();
+		}
+
+		uint64_t line_vals[3];
+
+		int i = 0;
+		for (list<string>::iterator it = split_line.begin(); it != split_line.end(); it++, i++)
+		{
+			// convert string to integer
+			uint64_t tmp;
+			convert_uint64_t(tmp, (*it));
+			line_vals[i] = tmp;
+		}
+
+		// Finish parsing.
+		uint64_t trans_cycle;
+		if(speedup_factor != 0)
+		{
+			trans_cycle = line_vals[0] / speedup_factor;
+		}
+		else
+		{
+			trans_cycle = line_vals[0];
+		}
+		bool write = line_vals[1] % 2;
+		uint64_t addr = line_vals[2];
+
+		// increment the counter until >= the clock cycle of cur transaction
+		// for each cycle, call the update() function.
+		while (trace_cycles < trans_cycle)
+		{
+			NVDimm->update();
+			trace_cycles++;
+		}
+
+		// add the transaction and continue
+		NVDimm->addTransaction(write, addr);
+		pending++;
+		trans_count++;
+
+		// If the pending count goes above MAX_PENDING, wait until it goes back below MIN_PENDING before adding more 
+		// transactions. This throttling will prevent the memory system from getting overloaded.
+		if (pending >= MAX_PENDING)
+		{
+			//cout << "MAX_PENDING REACHED! Throttling the trace until pending is back below MIN_PENDING.\t\tcycle= " << trace_cycles << "\n";
+			throttle_count++;
+			while (pending > MIN_PENDING)
+			{
+				NVDimm->update();
+				throttle_cycles++;
+			}
+			//cout << "Back to MIN_PENDING. Allowing transactions to be added again.\t\tcycle= " << trace_cycles << "\n";
+		}
+
+		// check to see if we're done with the trace for now
+		if(MAX_TRANS != 0 && trans_count >= MAX_TRANS)
+			done = true;
+	}
+
+	inFile.close();
+
+
+	// Run update until all transactions come back.
+	while (pending > 0)
+	{
+		NVDimm->update();
+		final_cycles++;
+	}
+
+	// This is a hack for the moment to ensure that a final write completes.
+	// In the future, we need two callbacks to fix this.
+	// This is not counted towards the cycle counts for the run though.
+	for (int i=0; i<1000000; i++)
+		NVDimm->update();
+
+	cout<<"Simulation Results:\n";
+	cout << "trace_cycles = " << trace_cycles << "\n";
+	cout << "throttle_count = " << throttle_count << "\n";
+	cout << "throttle_cycles = " << throttle_cycles << "\n";
+	cout << "final_cycles = " << final_cycles << "\n";
+	cout << "total_cycles = trace_cycles + throttle_cycles + final_cycles = " << trace_cycles + throttle_cycles + final_cycles << "\n\n";
+	NVDimm->printStats();
+	NVDimm->saveStats();
+	cout<<"Execution time: "<<(end-start)<<" cycles. "<<(double)(end-start)/CLOCKS_PER_SEC<<" seconds.\n";
 }
 
 void test_obj::run_test(void){

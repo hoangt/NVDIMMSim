@@ -34,6 +34,13 @@
 #ifndef NVTBS_H
 #define NVTBS_H
 
+#include <getopt.h>
+#include <sstream>
+#include <iostream>
+#include <time.h>
+
+#include "FlashConfiguration.h"
+#include "FlashTransaction.h"
 #include "NVDIMM.h"
 
 class test_obj{
@@ -43,5 +50,6 @@ public:
     void write_cb(uint64_t, uint64_t, uint64_t, bool);
     void power_cb(uint64_t, vector<vector<double>>, uint64_t, bool);
     void run_test(void);
+    void run_trace(string tracefile);
 };
 #endif

@@ -88,6 +88,7 @@ namespace NVDSim{
 			bool addPacket(ChannelPacket *p);
 			bool readdPacket(ChannelPacket *p);
 			bool nextDie(uint64_t package);
+			bool checkHazards(uint64_t virtualAddress, list<uint64_t> write_addresses);
 			void update(void);
 			bool dataReady(uint64_t package, uint64_t die, uint64_t plane);
 			void writePausingCancelation(ChannelPacket *packet);

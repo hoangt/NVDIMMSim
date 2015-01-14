@@ -285,6 +285,19 @@ bool Controller::readdPacket(ChannelPacket *p)
 	}
 }
 
+bool Controller::checkHazards(uint64_t virtualAddress, list<uint64_t> write_addresses)
+{
+	list<uint64_t>::iterator haz_it;
+	for(haz_it = write_addresses.begin(); haz_it != write_addresses.end(); haz_it++)
+	{
+		if((*haz_it) == virtualAddress)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 void Controller::update(void){    
 	uint64_t i;	
 	//Look through queues and send oldest packets to the appropriate channel
@@ -303,6 +316,7 @@ void Controller::update(void){
 		list<uint64_t> temp_write_addrs;
 		while(!done)
 		{
+			
 			if(ctrl_it != ctrlQueues[i].end())
 			{
 				// see if we need to skip the current command because its a write whose data couldn't be sent
@@ -317,7 +331,8 @@ void Controller::update(void){
 			
 			// make sure that we have something to do and we're not already doing something
 			if ((ctrl_it != ctrlQueues[i].end() || (cfg.REFRESH_ENABLE && refreshCountdown[i] <= 0 && !refresh_skip)) && outgoingPackets[i]==NULL)
-			{
+			{				
+				//cout << "ctrl it is pointed to a packet of type " << (*ctrl_it)->busPacketType << " with address " << (*ctrl_it)->virtualAddress << "\n";
 				// check the status of the die
 				// ***** This is the write cancelation and write pausing stuff ************************************************************************************
 				if((cfg.WRITE_PAUSING || cfg.WRITE_CANCELATION) && ctrl_it != ctrlQueues[i].end())
@@ -395,18 +410,7 @@ void Controller::update(void){
 							else if((*ctrl_it)->busPacketType == READ)
 							{
 								// this might be way too slow for this, we'll see
-								bool hazard_found = false;
-								list<uint64_t>::iterator haz_it;
-								for(haz_it = temp_write_addrs.begin(); haz_it != temp_write_addrs.end(); haz_it++)
-								{
-									if((*haz_it) == (*ctrl_it)->virtualAddress)
-									{
-										hazard_found = true;
-										break;
-									}
-								}
-
-								if(!hazard_found)
+								if(!checkHazards((*ctrl_it)->virtualAddress, temp_write_addrs))
 								{
 									read_found = true;
 									break;
@@ -435,21 +439,7 @@ void Controller::update(void){
 					else
 					{					
 						// this might be way too slow for this, we'll see
-						bool hazard_found = false;
-						if((*ctrl_it)->busPacketType == READ)
-						{
-							list<uint64_t>::iterator haz_it;
-							for(haz_it = temp_write_addrs.begin(); haz_it != temp_write_addrs.end(); haz_it++)
-							{
-								if((*haz_it) == (*ctrl_it)->virtualAddress)
-								{
-									hazard_found = true;
-									break;
-								}
-							}
-						}
-						
-						if(!hazard_found)
+						if(!checkHazards((*ctrl_it)->virtualAddress, temp_write_addrs))
 						{
 							//cout << "Front not data so uesd that \n";
 							//cout << "It was packet of type " << (*ctrl_it)->busPacketType << " with address " << (*ctrl_it)->virtualAddress << "\n";
@@ -462,25 +452,13 @@ void Controller::update(void){
 						}
 					}
 				}
+				// NOT SCHEDULING
 				else
 				{
-					// this might be way too slow for this, we'll see
-					bool hazard_found = false;
-					if((*ctrl_it)->busPacketType == READ)
+					// this might be way too slow for this, we'll see			
+					if(!checkHazards((*ctrl_it)->virtualAddress, temp_write_addrs))
 					{
-						list<uint64_t>::iterator haz_it;
-						for(haz_it = temp_write_addrs.begin(); haz_it != temp_write_addrs.end(); haz_it++)
-						{
-							if((*haz_it) == (*ctrl_it)->virtualAddress)
-							{
-								hazard_found = true;
-								break;
-							}
-						}
-					}
-					
-					if(!hazard_found)
-					{
+						//cout << "doing packet of type " << (*ctrl_it)->busPacketType << " with address " << (*ctrl_it)->virtualAddress << "\n";
 						potentialPacket = *ctrl_it;
 					}
 					else
@@ -615,14 +593,22 @@ void Controller::update(void){
 					{
 						// see if we just failed to schedule a data packet
 						// if so make sure we don't schedule its write without it
-						if((*ctrl_it)->busPacketType == DATA)
+						if(potentialPacket->busPacketType == DATA)
 						{
 							data_skip = true;
-							temp_write_addrs.push_back((*ctrl_it)->virtualAddress);
+							temp_write_addrs.push_back(potentialPacket->virtualAddress);
 						}
-						// try the next command in the queue to see if its die is available
-						ctrl_it++;
-						continue;
+						
+						if(potentialPacket->busPacketType != AUTO_REFRESH)
+						{
+							// try the next command in the queue to see if its die is available
+							ctrl_it++;	
+							continue;
+						}
+						else
+						{
+							done = true;
+						}	
 					}
 				}
 				// command was a refresh and not all required units are ready for the refresh

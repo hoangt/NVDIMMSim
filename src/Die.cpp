@@ -166,8 +166,20 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 				break;
 		        case SET_WRITE:
 			    	planes[busPacket->plane].write(busPacket);
-				parentNVDIMM->numWrites++;			
-				controlCyclesLeft[busPacket->plane]= cfg.ERASE_TIME;
+				parentNVDIMM->numWrites++;
+				if(busPacket->block == open_row[busPacket->plane] && cfg.OPEN_ROW_ENABLE)
+				{
+					controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
+					if(cfg.LOGGING)
+					{
+						log->row_hit();
+					}
+				}
+				else
+				{
+					controlCyclesLeft[busPacket->plane]= ERASE_CYCLES;
+					open_row[busPacket->plane] = busPacket->block;						
+				}
 				writeIterationCyclesLeft[busPacket->plane] = cfg.WRITE_ITERATION_CYCLES;
 				// log the new state of this plane
 				if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
@@ -379,7 +391,6 @@ void Die::update(void){
 					// For everything but READ/GC_READ, and DATA, the access is done at this point.
 					// Note: for READ/GC_READ, this is handled in Controller::receiveFromChannel().
 					// For DATA, this is handled as part of the WRITE in Plane.
-
 					// Tell the logger the access is done.
 					if (cfg.LOGGING)
 					{
