@@ -123,6 +123,7 @@ bool Buffer::sendPiece(SenderType t, int type, uint64_t die, uint64_t plane){
 		myPacket->type = type;
 		myPacket->number = cfg.CHANNEL_WIDTH;
 		myPacket->plane = plane;
+		// TODO: Add support of open page stuff with buffering
 		inData[die].push_back(myPacket);
 		inDataSize[die] = inDataSize[die] + cfg.CHANNEL_WIDTH;
 	    }
@@ -379,9 +380,9 @@ void Buffer::processInData(uint64_t die){
     {
 	//cout << dies[die]->isDieBusy(inData[die].front()->plane) << "\n";
 	//cout << inData[die].front()->type << "\n";
-	if(dies[die]->isDieBusy(inData[die].front()->plane) == 0 ||
-	   (inData[die].front()->type == 5 && dies[die]->isDieBusy(inData[die].front()->plane) == 2) ||
-	   (inData[die].front()->type != 5 && dies[die]->isDieBusy(inData[die].front()->plane) == 3))
+	    if(dies[die]->isDieBusy(inData[die].front()->plane, inData[die].front()->block) == FREE ||
+	   (inData[die].front()->type == 5 && dies[die]->isDieBusy(inData[die].front()->plane, inData[die].front()->block) == CAN_ACCEPT_DATA) ||
+	   (inData[die].front()->type != 5 && dies[die]->isDieBusy(inData[die].front()->plane, inData[die].front()->block) == WAITING))
 	{   
 	    channel->bufferDone(id, die, inData[die].front()->plane);
 	    if(!cfg.CUT_THROUGH)

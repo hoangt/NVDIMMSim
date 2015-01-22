@@ -70,18 +70,18 @@ int Channel::obtainChannel(uint64_t s, SenderType t, ChannelPacket *p){
     // we cannot send data or commands to a die that is busy or does not have the reg room for the data
     // the different isDieBusy numbers correspond to different plane states, more information about this function
     // and its return values can be found in Die.cpp
-	if (sender != ULLONG_MAX)
-	{
-		return 0;
-	}
-	else if(busy != 1)
-	{
-		lastSender = sType;
-		sType = t;
-		sender = (int) s;
-		return 1;
-	}
-	return 0;
+    if (sender != ULLONG_MAX)
+    {
+	    return 0;
+    }
+    else if(busy != 1)
+    {
+	    lastSender = sType;
+	    sType = t;
+	    sender = (int) s;
+	    return 1;
+    }
+    return 0;
 }
 
 int Channel::releaseChannel(SenderType t, uint64_t s){       

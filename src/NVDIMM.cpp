@@ -73,7 +73,7 @@ namespace NVDSim
 	}
 	PRINT("\nDevice Information:\n");
 	PRINT("Device Type: "<<cfg.DEVICE_TYPE);
-	uint64_t bits_per_GB = (uint64_t)(1024*8192)*(1024);
+	uint64_t bits_per_GB = (uint64_t)(1024*1024)*(1024);
 	PRINT("Size (GB): "<<TOTAL_SIZE/bits_per_GB);
 	PRINT("Block Size: "<<BLOCK_SIZE);
 	PRINT("Plane Size: "<<PLANE_SIZE);

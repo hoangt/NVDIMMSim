@@ -82,11 +82,14 @@ namespace NVDSim{
 		uint64_t number;
 		// plane that this page is for
 		uint64_t plane;
+		// block that this page is for
+		uint64_t block;
 
 		BufferPacket(){
 		    type = 0;
 		    number = 0;
 		    plane = 0;
+		    block = 0;
 		}
 	    };
 	    

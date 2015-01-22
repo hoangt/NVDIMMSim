@@ -50,7 +50,7 @@ namespace NVDSim{
 			void writeDone(ChannelPacket *busPacket);
 			void erase(ChannelPacket *busPacket);
 			void storeInData(ChannelPacket *busPacket); 
-			ChannelPacket *readFromData(void);
+			void readFromData(void);
 			bool checkCacheReg(void);
 			bool checkDataReg(void);
 			void dataUsed(void);

@@ -98,9 +98,9 @@ void Plane::writeDone(ChannelPacket *busPacket)
 {
 	blocks[busPacket->block].write(cfg.GARBAGE_COLLECT, busPacket->page, dataReg->data);
 
-    // The data packet is now done being used, so it can be deleted.
-    delete dataReg;
-    dataReg = NULL;
+	// The data packet is now done being used, so it can be deleted.
+	delete dataReg;
+	dataReg = NULL;
 }
 
 // should only ever erase blocks
@@ -130,20 +130,22 @@ void Plane::storeInData(ChannelPacket *busPacket){
     }
 }
 
-ChannelPacket *Plane::readFromData(void){
+void Plane::readFromData(void){
     if(cfg.RW_INTERLEAVE_ENABLE && cacheReg == NULL && dataReg != NULL)
     {
 	//cout << "read data from the cacheReg \n";
 	cacheReg = dataReg;
 	dataReg = NULL;
-	return cacheReg;
     }
-    else if (dataReg != NULL)
+    else if(dataReg!=NULL)
     {
-	    return dataReg;
+	    // do nothing in the non-interleaving case
     }
-    // should never get here
-    abort();
+    else
+    {
+	    ERROR("tried to read data a plane but there was no data in its register");
+	    abort();
+    }
 }
 
 bool Plane::checkCacheReg(void)

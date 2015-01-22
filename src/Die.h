@@ -46,6 +46,17 @@
 
 namespace NVDSim{
 
+	enum PlaneState
+	{
+		FREE,
+		BUSY,
+		CAN_RW,
+		CAN_READ,
+		CAN_ACCEPT_DATA,
+		WAITING,
+		PLANE_WRITING
+	};
+
 	class Buffer;
 	class Controller;
 	class NVDIMM;
@@ -55,7 +66,7 @@ namespace NVDSim{
 	                Die(Configuration &nv_cfg, NVDIMM *parent, Logger *l, uint64_t id);
 			void attachToBuffer(Buffer *buff);
 			void receiveFromBuffer(ChannelPacket *busPacket);
-			int isDieBusy(uint64_t plane);
+			PlaneState isDieBusy(uint64_t plane, uint64_t block);
 			void testDieRefresh(uint64_t plane, uint64_t block, bool write);
 			bool canDieRefresh();
 			void update(void);

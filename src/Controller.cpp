@@ -73,21 +73,27 @@ Controller::Controller(Configuration &nv_cfg, NVDIMM* parent, Logger* l) :
 
 	if(cfg.REFRESH_ENABLE)
 	{
-		// TO DO: Make sure that this math is valid with non-Flash-like hierarchies
-		// refreshing all the banks on a channel simultaneously so we don't have
-		// to issue as many refreshes
+		// In real DRAM systems refreshes are divided up into 8192 parts so that the entire rank is refreshed
+		// with 8192 refreshes each of which takes some longer refresh time
+		// The refresh period takes this value into account so we don't need to worry about how many columns or rows are
+		// being refreshed at a time, we can just assume that its been divided into 8k refreshes
+		// The number of refreshes required to fully refresh a device is usually specified in its white paper
+		// In LPDDR when they do per bank refresh, the number of refreshes is multiplied by the number of banks
+		// as a result the period between refreshes becomes shorter (divided by the number of ranks),
+		// also the time to complete a refresh is also reduced
+		// 
 		if(cfg.refreshLevel == PerChannel)
 		{
-			REFRESH_CTRL_PERIOD = cfg.REFRESH_PERIOD / (cfg.PAGES_PER_BLOCK * cfg.BLOCKS_PER_PLANE);
+			REFRESH_CTRL_PERIOD = REFRESH_PERIOD_CYCLES * cfg.DIES_PER_PACKAGE;
 		}
 		else if(cfg.refreshLevel == PerVault)
 		{
-			REFRESH_CTRL_PERIOD = cfg.REFRESH_PERIOD / (cfg.PAGES_PER_BLOCK * cfg.BLOCKS_PER_PLANE * cfg.PLANES_PER_DIE);
+			REFRESH_CTRL_PERIOD = REFRESH_PERIOD_CYCLES;
 		}
 		// per bank default
 		else
 		{
-			REFRESH_CTRL_PERIOD = cfg.REFRESH_PERIOD / (cfg.PAGES_PER_BLOCK * cfg.BLOCKS_PER_PLANE * cfg.PLANES_PER_DIE * cfg.DIES_PER_PACKAGE);
+			REFRESH_CTRL_PERIOD = REFRESH_PERIOD_CYCLES / cfg.PLANES_PER_DIE;
 		}
 		cout << "Refresh level is: " << cfg.refreshLevel << "\n";
 		cout << "Refresh control period is: " << REFRESH_CTRL_PERIOD << "\n";
@@ -216,6 +222,8 @@ void Controller::receiveFromChannel(ChannelPacket *busPacket){
 			break;
 	}
 
+	cout << "controller get bus packet back from channel for address " << busPacket->virtualAddress << " on cycle " << currentClockCycle << "\n";
+
 	// Delete the ChannelPacket since READ is done. This must be done to prevent memory leaks.
 	delete busPacket;
 }
@@ -261,6 +269,7 @@ bool Controller::addPacket(ChannelPacket *p){
 				}
 			}
 		}
+		cout << "received controller packet to address " << p->virtualAddress << " on cycle " << currentClockCycle << "\n";
 		return true;
 	}
 	else
@@ -455,17 +464,7 @@ void Controller::update(void){
 				// NOT SCHEDULING
 				else
 				{
-					// this might be way too slow for this, we'll see			
-					if(!checkHazards((*ctrl_it)->virtualAddress, temp_write_addrs))
-					{
-						//cout << "doing packet of type " << (*ctrl_it)->busPacketType << " with address " << (*ctrl_it)->virtualAddress << "\n";
-						potentialPacket = *ctrl_it;
-					}
-					else
-					{
-						ctrl_it++;
-						continue;
-					}
+					potentialPacket = *ctrl_it;
 				}
 				
 				// figure out which channel we'll be using depending on what we're sending, data or command stuff
@@ -486,16 +485,16 @@ void Controller::update(void){
 					// see if this die is ready for a new transaciton
 					// no point in doing any other calculation otherwise
 					// both channels point to the same dies so it doesn't matter which channel pointer this is
-					int dieBusy = channel_pointer->buffer->dies[potentialPacket->die]->isDieBusy(potentialPacket->plane); 
-					if(((dieBusy == 0) ||
+					PlaneState dieBusy = channel_pointer->buffer->dies[potentialPacket->die]->isDieBusy(potentialPacket->plane, potentialPacket->block); 
+					if(((dieBusy == FREE) ||
 					    // should allow us to send write data to a buffer that is currently writing
-					    (potentialPacket->busPacketType == DATA && dieBusy == 2) ||
+					    (potentialPacket->busPacketType == DATA && (dieBusy == CAN_ACCEPT_DATA || (cfg.OPEN_ROW_ENABLE && dieBusy == WAITING))) ||
 					    // should allow us to send a write command to a plane that has a loaded cache register 		      
-					    ((potentialPacket->busPacketType == WRITE  || potentialPacket->busPacketType == GC_WRITE) && (dieBusy == 3 || dieBusy == 5)) ||
+					    ((potentialPacket->busPacketType == WRITE  || potentialPacket->busPacketType == GC_WRITE) && (dieBusy == WAITING || dieBusy == CAN_RW)) ||
 					    // should allow us to send a read command to a plane that has a free data reg
 					    // this allows us to interleave reads so that while one sending data back from the cache
 					    // reg, the other can start reading from the array into the data reg
-					    ((potentialPacket->busPacketType == READ || potentialPacket->busPacketType == GC_READ) && (dieBusy == 5))) ||
+					    ((potentialPacket->busPacketType == READ || potentialPacket->busPacketType == GC_READ) && (dieBusy == CAN_READ || dieBusy == CAN_RW))) ||
 					   (cfg.REFRESH_ENABLE && potentialPacket->busPacketType == AUTO_REFRESH && channel_pointer->buffer->dies[potentialPacket->die]->canDieRefresh()))
 					{
 						// the die can accomodate this operation
@@ -579,6 +578,7 @@ void Controller::update(void){
 									channelBeatsLeft[i] += CHANNEL_TURN_CYCLES;
 								}							
 							}
+							cout << "issued controller packet of type " << potentialPacket->busPacketType << " to address " << potentialPacket->virtualAddress << " on cycle " << currentClockCycle << "\n";
 							done = true;
 						}
 						// couldn't get the channel 
@@ -596,7 +596,6 @@ void Controller::update(void){
 						if(potentialPacket->busPacketType == DATA)
 						{
 							data_skip = true;
-							temp_write_addrs.push_back(potentialPacket->virtualAddress);
 						}
 						
 						if(potentialPacket->busPacketType != AUTO_REFRESH)
@@ -784,10 +783,10 @@ void Controller::update(void){
 
 void Controller::writePausingCancelation(ChannelPacket* front_packet)
 {
-	int status = (*packages)[front_packet->package].dies[front_packet->die]->isDieBusy(front_packet->plane);		   
+	PlaneState status = (*packages)[front_packet->package].dies[front_packet->die]->isDieBusy(front_packet->plane, front_packet->block);		   
 			
 	// if the die/plane is writing and we have a read waiting then see how far into this iteration		    
-	if((status == 2 || status == 6) && front_packet->busPacketType == READ)
+	if((status == CAN_ACCEPT_DATA || status == PLANE_WRITING) && front_packet->busPacketType == READ)
 	{			
 		// also make sure that we don't have a read after write hazard here
 		if((*packages)[front_packet->package].dies[front_packet->die]->isCurrentPAddr(front_packet->plane, front_packet->block, front_packet->physicalAddress))

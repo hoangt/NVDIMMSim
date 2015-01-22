@@ -158,6 +158,7 @@ extern bool DEBUG_TRANSLATION;
 // some DRAM specific timings
 #define REFRESH_CYCLES divide_params_64b(cfg.REFRESH_TIME, cfg.CYCLE_TIME)
 #define ROW_HIT_CYCLES divide_params_64b(cfg.ROW_HIT_TIME, cfg.CYCLE_TIME)
+#define REFRESH_PERIOD_CYCLES divide_params_64b(cfg.REFRESH_PERIOD, cfg.CYCLE_TIME)
 
 #define USE_EPOCHS (cfg.EPOCH_CYCLES > 0)
 

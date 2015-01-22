@@ -144,6 +144,7 @@ Ftl::Ftl(Configuration &nv_cfg, Controller *c, Logger *l, NVDIMM *p) :
 		rowBitWidth = nvdimm_log2(cfg.BLOCKS_PER_PLANE);
 		colBitWidth = nvdimm_log2(cfg.PAGES_PER_BLOCK);
 		colOffset = nvdimm_log2(cfg.NV_PAGE_SIZE);
+		cout << "offsets are " << "chan: " << channelBitWidth << " r: " << vaultBitWidth << " b: " << bankBitWidth << " row: " << rowBitWidth << " col: " << colBitWidth << " offset: " << colOffset << "\n";
 	}
 }
 
@@ -368,6 +369,7 @@ ChannelPacket *Ftl::translate(ChannelPacketType type, uint64_t vAddr, uint64_t p
 		}
 		else
 		{
+			cout << "WARNING: Non-power of 2 so using default translation \n";
 			physicalAddress /= cfg.NV_PAGE_SIZE;
 			page = physicalAddress % cfg.PAGES_PER_BLOCK;
 			physicalAddress /= cfg.PAGES_PER_BLOCK;
@@ -417,6 +419,8 @@ bool Ftl::attemptAdd(FlashTransaction &t, std::list<FlashTransaction> *queue, ui
 		log->log_ftl_queue_event(false, queue);
 	    }
 	}
+
+	cout << "added transaction to address " << t.address << " on cycle " << currentClockCycle << "\n";
 	return true;
     }
 }
@@ -507,8 +511,22 @@ bool Ftl::addTransaction(FlashTransaction &t){
 
 // this is the main function of the ftl, it will run on every clock tick
 void Ftl::update(void){
-	if (busy) {
+
+	// if we're not already doing something see if there is something to do
+	if (!busy)
+	{
+		if (!transQueue.empty()) {
+		    busy = 1;
+		    currentTransaction = transQueue.front();
+		    lookupCounter = LOOKUP_CYCLES;
+		}
+	}
+
+	// if we're doing something, then do it
+	if (busy) 
+	{		
 	    if (lookupCounter <= 0 && !ctrl_write_queues_full){
+		    cout << "issued transaction to address " << currentTransaction.address << " on cycle " << currentClockCycle << "\n";
 			switch (currentTransaction.transactionType){
 				case DATA_READ:
 				{
@@ -577,13 +595,13 @@ void Ftl::update(void){
 		locked_counter++;
 	    }
 	} // Not currently busy.
-	else {
+	/*else {
 		if (!transQueue.empty()) {
 		    busy = 1;
 		    currentTransaction = transQueue.front();
 		    lookupCounter = LOOKUP_CYCLES;
 		}
-	}
+		}*/
 
 }
 

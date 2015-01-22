@@ -294,6 +294,7 @@ void Logger::access_process(uint64_t addr, uint64_t paddr, uint64_t package, Cha
 	access_map[addr][paddr].push_back(a);
 	//cout << "access map now has size " << access_map[addr][paddr].size() << "\n";
 	
+	cout << "acccess to address " << addr << " cleared queue after " << a.process - a.start << " cycles \n";
 	this->queue_latency(a.process - a.start);
 }
 
@@ -316,6 +317,7 @@ void Logger::access_stop(uint64_t addr, uint64_t paddr)
 	    access_energy[a.package] += (cfg.READ_I - cfg.STANDBY_I) * cfg.READ_TIME/2;
 	    this->read();
 	    this->read_latency(a.stop - a.start);
+	    cout << "read complete to address " << addr << " at " << a.stop - a.start << " cycles \n";
 	}	         
 	else
 	{
@@ -323,6 +325,7 @@ void Logger::access_stop(uint64_t addr, uint64_t paddr)
 	    access_energy[a.package] += (cfg.WRITE_I - cfg.STANDBY_I) * cfg.WRITE_TIME/2;
 	    this->write();    
 	    this->write_latency(a.stop - a.start);
+	    cout << "write complete to address " << addr << " at " << a.stop - a.start << " cycles \n";
 	    if(cfg.WEAR_LEVEL_LOG)
 	    {
 		if(writes_per_address.count(a.pAddr) == 0)

@@ -182,21 +182,21 @@ void transaction_complete(uint64_t clock_cycle)
 }
 
 void test_obj::read_cb(uint64_t id, uint64_t address, uint64_t cycle, bool mapped){
-    cout<<"[Callback] read complete: "<<id<<" "<<address<<" cycle="<<cycle<<" mapped="<<mapped<<endl;
+	//cout<<"[Callback] read complete: "<<id<<" "<<address<<" cycle="<<cycle<<" mapped="<<mapped<<endl;
     transaction_complete(cycle);
 }
 
 void test_obj::crit_cb(uint64_t id, uint64_t address, uint64_t cycle, bool mapped){
-	cout<<"[Callback] crit line done: "<<id<<" "<<address<<" cycle="<<cycle<<endl;
+	//cout<<"[Callback] crit line done: "<<id<<" "<<address<<" cycle="<<cycle<<endl;
 }
 
 void test_obj::write_cb(uint64_t id, uint64_t address, uint64_t cycle, bool mapped){
-	cout<<"[Callback] write complete: "<<id<<" "<<address<<" cycle="<<cycle<<endl;
+	//cout<<"[Callback] write complete: "<<id<<" "<<address<<" cycle="<<cycle<<endl;
 	transaction_complete(cycle);
 }
 
 void test_obj::power_cb(uint64_t id, vector<vector<double>> data, uint64_t cycle, bool mapped){
-        cout<<"[Callback] Power Data for cycle: "<<cycle<<endl;
+        /*cout<<"[Callback] Power Data for cycle: "<<cycle<<endl;
 	for(uint64_t i = 0; i < 1; i++){
 	  for(uint64_t j = 0; j < data.size(); j++){
 	      if(j == 0){
@@ -207,12 +207,12 @@ void test_obj::power_cb(uint64_t id, vector<vector<double>> data, uint64_t cycle
 		cout<<"    Package: "<<i<<" Erase Energy: "<<data[2][i]<<"\n";
 	      }
 	    }
-	}
+	    }*/
 }
 
 void test_obj::run_trace(string tracefile)
 {
-	clock_t start= clock(), end;
+	clock_t start= clock(), end = clock();
 	NVDIMM *NVDimm= new NVDIMM(1,"ini/samsung_K9XXG08UXM_gc_test.ini","","");
 	//NVDIMM *NVDimm= new NVDIMM(1,"ini/PCM_TEST.ini","ini/def_system.ini","","");
 
@@ -236,6 +236,7 @@ void test_obj::run_trace(string tracefile)
 	char char_line[256];
 	string line;
 	bool done = false;
+	bool paused = false;
 	uint64_t trans_count = 0;
 
 	// if we're fast forwarding some
@@ -251,72 +252,86 @@ void test_obj::run_trace(string tracefile)
 			}
 		}		
 	}
-	done = false;
+	done = false;	
+	bool write;
+	uint64_t addr;
 
 	while (inFile.good() && !done)
 	{
-		// Read the next line.
-		inFile.getline(char_line, 256);
-		line = (string)char_line;
-
-		// Filter comments out.
-		size_t pos = line.find("#");
-		line = line.substr(0, pos);
-
-		// Strip whitespace from the ends.
-		line = strip(line);
-
-		// Filter newlines out.
-		if (line.empty())
-			continue;
-
-		// Split and parse.
-		list<string> split_line = split(line);
-
-		if (split_line.size() != 3)
+		if(!paused)
 		{
-			cout << "ERROR: Parsing trace failed on line:\n" << line << "\n";
-			cout << "There should be exactly three numbers per line\n";
-			cout << "There are " << split_line.size() << endl;
-			abort();
-		}
+			// Read the next line.
+			inFile.getline(char_line, 256);
+			line = (string)char_line;
+			
+			// Filter comments out.
+			size_t pos = line.find("#");
+			line = line.substr(0, pos);
+			
+			// Strip whitespace from the ends.
+			line = strip(line);
+			
+			// Filter newlines out.
+			if (line.empty())
+				continue;
+			
+			// Split and parse.
+			list<string> split_line = split(line);
+			
+			if (split_line.size() != 3)
+			{
+				cout << "ERROR: Parsing trace failed on line:\n" << line << "\n";
+				cout << "There should be exactly three numbers per line\n";
+				cout << "There are " << split_line.size() << endl;
+				abort();
+			}
+			
+			uint64_t line_vals[3];
+			
+			int i = 0;
+			for (list<string>::iterator it = split_line.begin(); it != split_line.end(); it++, i++)
+			{
+				// convert string to integer
+				uint64_t tmp;
+				convert_uint64_t(tmp, (*it));
+				line_vals[i] = tmp;
+			}
 
-		uint64_t line_vals[3];
-
-		int i = 0;
-		for (list<string>::iterator it = split_line.begin(); it != split_line.end(); it++, i++)
-		{
-			// convert string to integer
-			uint64_t tmp;
-			convert_uint64_t(tmp, (*it));
-			line_vals[i] = tmp;
-		}
-
-		// Finish parsing.
-		uint64_t trans_cycle;
-		if(speedup_factor != 0)
-		{
-			trans_cycle = line_vals[0] / speedup_factor;
-		}
-		else
-		{
-			trans_cycle = line_vals[0];
-		}
-		bool write = line_vals[1] % 2;
-		uint64_t addr = line_vals[2];
-
-		// increment the counter until >= the clock cycle of cur transaction
-		// for each cycle, call the update() function.
-		while (trace_cycles < trans_cycle)
-		{
-			NVDimm->update();
-			trace_cycles++;
+			// Finish parsing.
+			uint64_t trans_cycle;
+			if(speedup_factor != 0)
+			{
+				trans_cycle = line_vals[0] / speedup_factor;
+			}
+			else
+			{
+				trans_cycle = line_vals[0];
+			}
+			write = line_vals[1] % 2;
+			addr = line_vals[2];
+			
+			// increment the counter until >= the clock cycle of cur transaction
+			// for each cycle, call the update() function.
+			while (trace_cycles < trans_cycle)
+			{
+				NVDimm->update();
+				trace_cycles++;
+			}
 		}
 
 		// add the transaction and continue
-		NVDimm->addTransaction(write, addr);
-		pending++;
-		trans_count++;
+		if(NVDimm->addTransaction(write, addr))
+		{
+			pending++;
+			trans_count++;
+			paused = false;
+		}
+		else
+		{
+			paused = true;
+			NVDimm->update();
+			throttle_cycles++;
+		}
 
 		// If the pending count goes above MAX_PENDING, wait until it goes back below MIN_PENDING before adding more 
 		// transactions. This throttling will prevent the memory system from getting overloaded.
@@ -350,8 +365,8 @@ void test_obj::run_trace(string tracefile)
 	// This is a hack for the moment to ensure that a final write completes.
 	// In the future, we need two callbacks to fix this.
 	// This is not counted towards the cycle counts for the run though.
-	for (int i=0; i<1000000; i++)
-		NVDimm->update();
+	//for (int i=0; i<1000000; i++)
+	//	NVDimm->update();
 
 	cout<<"Simulation Results:\n";
 	cout << "trace_cycles = " << trace_cycles << "\n";
@@ -365,7 +380,7 @@ void test_obj::run_trace(string tracefile)
 }
 
 void test_obj::run_test(void){
-	clock_t start= clock(), end;
+	clock_t start= clock(), end = clock();
 	uint64_t cycle;
 	NVDIMM *NVDimm= new NVDIMM(1,"ini/samsung_K9XXG08UXM_gc_test.ini","","");
 	//NVDIMM *NVDimm= new NVDIMM(1,"ini/PCM_TEST.ini","ini/def_system.ini","","");
