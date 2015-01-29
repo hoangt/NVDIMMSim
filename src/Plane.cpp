@@ -157,6 +157,11 @@ bool Plane::checkCacheReg(void)
     return false;
 }
 
+ChannelPacket* Plane::returnCacheReg(void)
+{
+	return cacheReg;
+}
+
 bool Plane::checkDataReg(void)
 {
     if(dataReg == NULL)
@@ -164,6 +169,11 @@ bool Plane::checkDataReg(void)
 	return true;
     }
     return false;
+}
+
+ChannelPacket* Plane::returnDataReg(void)
+{
+	return dataReg;
 }
 
 void Plane::dataGone(void)

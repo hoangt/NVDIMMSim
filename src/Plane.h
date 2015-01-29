@@ -52,7 +52,9 @@ namespace NVDSim{
 			void storeInData(ChannelPacket *busPacket); 
 			void readFromData(void);
 			bool checkCacheReg(void);
+			ChannelPacket* returnCacheReg(void);			
 			bool checkDataReg(void);
+			ChannelPacket* returnDataReg(void);
 			void dataUsed(void);
 			void dataGone(void);
 			void clearWrite(void);

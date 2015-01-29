@@ -105,7 +105,11 @@ void convert_float(float &var, string value, string infostring)
 uint divide_params(uint num, uint denom)
 {
     uint temp = (uint)(((float)num / (float)denom) + 0.99f);
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }
@@ -118,7 +122,11 @@ uint divide_params(uint num, uint denom)
 uint divide_params(uint64_t num, uint denom)
 {
     uint temp = (uint)(((float)num / (float)denom) + 0.99f);
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }
@@ -129,7 +137,11 @@ uint divide_params(uint64_t num, uint denom)
 uint divide_params(uint num, uint64_t denom)
 {
     uint temp = (uint)(((float)num / (float)denom) + 0.99f);
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }
@@ -140,7 +152,11 @@ uint divide_params(uint num, uint64_t denom)
 uint divide_params(uint64_t num, uint64_t denom)
 {
     uint temp = (uint)(((float)num / (float)denom) + 0.99f);
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }
@@ -151,7 +167,11 @@ uint divide_params(uint64_t num, uint64_t denom)
 uint divide_params(float num, float denom)
 {
     uint temp = (uint)((num / denom) + 0.99f);
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }
@@ -166,7 +186,11 @@ uint64_t divide_params_64b(uint64_t num, uint denom)
     ss << (((float)num / (float)denom) + 0.99f);
     ss >> temp;
 
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }
@@ -181,7 +205,11 @@ uint64_t divide_params_64b(uint num, uint64_t denom)
     ss << (((float)num / (float)denom) + 0.99f);
     ss >> temp;
 
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }
@@ -196,7 +224,11 @@ uint64_t divide_params_64b(uint64_t num, uint64_t denom)
     ss << (((float)num / (float)denom) + 0.99f);
     ss >> temp;
 
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }
@@ -211,7 +243,11 @@ uint64_t divide_params_64b(uint64_t num, float denom)
     ss << (((float)num / denom) + 0.99f);
     ss >> temp;
 
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }
@@ -226,7 +262,11 @@ uint64_t divide_params_64b(float num, float denom)
     ss << (uint)((num / denom) + 0.99f);
     ss >> temp;
 
-    if(temp <= 0)
+    if(num <= 0)
+    {
+	    return 0;
+    }
+    else if(temp <= 0)
     {
 	return 1;
     }

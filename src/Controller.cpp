@@ -201,6 +201,7 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 }
 
 void Controller::receiveFromChannel(ChannelPacket *busPacket){
+	cout << "controller get bus packet back from channel for address " << busPacket->virtualAddress << " on cycle " << currentClockCycle << "\n";
 	// READ is now done. Log it and call delete
 	if(cfg.LOGGING == true)
 	{
@@ -222,10 +223,8 @@ void Controller::receiveFromChannel(ChannelPacket *busPacket){
 			break;
 	}
 
-	cout << "controller get bus packet back from channel for address " << busPacket->virtualAddress << " on cycle " << currentClockCycle << "\n";
-
 	// Delete the ChannelPacket since READ is done. This must be done to prevent memory leaks.
-	delete busPacket;
+	//delete busPacket;
 }
 
 // this is only called on a write as the name suggests
@@ -488,13 +487,13 @@ void Controller::update(void){
 					PlaneState dieBusy = channel_pointer->buffer->dies[potentialPacket->die]->isDieBusy(potentialPacket->plane, potentialPacket->block); 
 					if(((dieBusy == FREE) ||
 					    // should allow us to send write data to a buffer that is currently writing
-					    (potentialPacket->busPacketType == DATA && (dieBusy == CAN_ACCEPT_DATA || (cfg.OPEN_ROW_ENABLE && dieBusy == WAITING))) ||
+					    (potentialPacket->busPacketType == DATA && (dieBusy == CAN_ACCEPT_DATA)) ||
 					    // should allow us to send a write command to a plane that has a loaded cache register 		      
-					    ((potentialPacket->busPacketType == WRITE  || potentialPacket->busPacketType == GC_WRITE) && (dieBusy == WAITING || dieBusy == CAN_RW)) ||
+					    ((potentialPacket->busPacketType == WRITE  || potentialPacket->busPacketType == GC_WRITE) && (dieBusy == WAITING || dieBusy == CAN_WRITE)) ||
 					    // should allow us to send a read command to a plane that has a free data reg
 					    // this allows us to interleave reads so that while one sending data back from the cache
 					    // reg, the other can start reading from the array into the data reg
-					    ((potentialPacket->busPacketType == READ || potentialPacket->busPacketType == GC_READ) && (dieBusy == CAN_READ || dieBusy == CAN_RW))) ||
+					    ((potentialPacket->busPacketType == READ || potentialPacket->busPacketType == GC_READ) && (dieBusy == CAN_READ))) ||
 					   (cfg.REFRESH_ENABLE && potentialPacket->busPacketType == AUTO_REFRESH && channel_pointer->buffer->dies[potentialPacket->die]->canDieRefresh()))
 					{
 						// the die can accomodate this operation
@@ -525,6 +524,8 @@ void Controller::update(void){
 								}
 							}
 							
+							// we're now sending this packet out so mark it as such
+							potentialPacket->busPacketStatus = OUTBOUND;
 							outgoingPackets[i] = potentialPacket;
 							if(cfg.REFRESH_ENABLE && potentialPacket->busPacketType == AUTO_REFRESH)
 							{

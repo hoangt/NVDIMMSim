@@ -51,6 +51,7 @@ ChannelPacket::ChannelPacket(ChannelPacketType packtype, uint64_t virtualAddr, u
 	plane = plane_num;
 	die = die_num;
 	package = package_num;
+	busPacketStatus = ISSUED;
 }
 
 ChannelPacket::ChannelPacket() {}

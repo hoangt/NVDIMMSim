@@ -85,7 +85,7 @@ void Die::attachToBuffer(Buffer *buff){
 
 
 void Die::receiveFromBuffer(ChannelPacket *busPacket){
-	cout << "die recieved packet for address " << busPacket->virtualAddress << " on clock cycle " << currentClockCycle << "\n";
+	cout << "die recieved packet of type " << busPacket->busPacketType << " for address " << busPacket->virtualAddress << " on clock cycle " << currentClockCycle << "\n";
 	cout << "package " << busPacket ->package << " die " << busPacket->die << " plane " << busPacket->plane << " row " << busPacket->block << "\n";
 	cout << "open row is " << open_row[busPacket->plane] << "\n";
 	if (busPacket->busPacketType == DATA){
@@ -93,6 +93,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 	} else if (currentCommands[busPacket->plane] == NULL || (busPacket->busPacketType == AUTO_REFRESH && currentCommands[plane_rpointer] == NULL)) {
 		if(busPacket->busPacketType != AUTO_REFRESH)
 		{
+			busPacket->busPacketStatus = RUNNING;
 			currentCommands[busPacket->plane] = busPacket;
 			if (cfg.LOGGING)
 			{
@@ -111,7 +112,9 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 				if(busPacket->block == open_row[busPacket->plane] && cfg.OPEN_ROW_ENABLE)
 				{
 					//planes[busPacket->plane].read(busPacket);
-					controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
+					// when we have a row hit in open page mode, then once we're sending data, the plane is available again
+					// other row hits can occur very quickly but a row miss will result in an extra delay
+					controlCyclesLeft[busPacket->plane] = CYCLES_TO_DATA;
 					if(cfg.LOGGING)
 					{
 						log->row_hit();
@@ -139,21 +142,21 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 			case WRITE:
 			case GC_WRITE:
 			        planes[busPacket->plane].write(busPacket);
-					parentNVDIMM->numWrites++;	
-					if(busPacket->block == open_row[busPacket->plane] && cfg.OPEN_ROW_ENABLE)
+				parentNVDIMM->numWrites++;	
+				if(busPacket->block == open_row[busPacket->plane] && cfg.OPEN_ROW_ENABLE)
+				{
+					controlCyclesLeft[busPacket->plane] = CYCLES_TO_DATA;
+					cout << "row hit \n";
+					if(cfg.LOGGING)
 					{
-						controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
-						cout << "row hit \n";
-						if(cfg.LOGGING)
-						{
-							log->row_hit();
-						}
+						log->row_hit();
 					}
-					else
-					{
-						controlCyclesLeft[busPacket->plane]= WRITE_CYCLES;						
-					}
-					writeIterationCyclesLeft[busPacket->plane] = cfg.WRITE_ITERATION_CYCLES;
+				}
+				else
+				{
+					controlCyclesLeft[busPacket->plane]= WRITE_CYCLES;						
+				}
+				writeIterationCyclesLeft[busPacket->plane] = cfg.WRITE_ITERATION_CYCLES;
 
 				// log the new state of this plane
 				if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
@@ -173,7 +176,7 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 				parentNVDIMM->numWrites++;
 				if(busPacket->block == open_row[busPacket->plane] && cfg.OPEN_ROW_ENABLE)
 				{
-					controlCyclesLeft[busPacket->plane] = ROW_HIT_CYCLES;
+					controlCyclesLeft[busPacket->plane] = CYCLES_TO_DATA;
 					cout << "row hit \n";
 					if(cfg.LOGGING)
 					{
@@ -240,10 +243,14 @@ PlaneState Die::isDieBusy(uint64_t plane, uint64_t block){
 				// not currently doing anything and room in both regs
 				return FREE;
 			}
-			else if(planes[plane].checkCacheReg() == false)
+			else if(planes[plane].checkDataReg() == true && planes[plane].returnCacheReg()->busPacketType == DATA)
 			{
-				// not currently doing anything but there is no room in the cache reg
-				return CAN_RW;
+				// not currently doing anything but there is room in the data reg, so we can read or write
+				return CAN_WRITE;
+			}
+			else if(planes[plane].checkDataReg() == true && planes[plane].returnCacheReg()->busPacketType != DATA)
+			{
+				return CAN_READ;
 			}
 			else
 			{
@@ -310,7 +317,6 @@ PlaneState Die::isDieBusy(uint64_t plane, uint64_t block){
 			{
 				// this plane can accept a read right now
 				return CAN_READ;
-				//return WAITING;
 			}
 			
 			// we cannot accept a read or write right now
@@ -390,13 +396,44 @@ void Die::update(void){
 						{
 							// we need to mark the new page as open now
 							open_row[currentCommand->plane] = currentCommand->block;
+						}					
+						// if we're doing closed page then the data comes out before the whole cycle is complete and the packet will be pushed
+						// before this point so we don't want to do it twice
+						// otherwise we wait for the cycle to complete before sending out the data so we do it here
+						if(cfg.OPEN_ROW_ENABLE || CYCLES_TO_DATA == 0)
+						{
+							cout << "open page sending data back \n";
+							currentCommand->busPacketStatus = INBOUND;
+							returnDataPackets.push(currentCommand);
+							planes[currentCommand->plane].readFromData();
+							no_reg_room = false;
 						}
-						planes[currentCommand->plane].readFromData();
-						returnDataPackets.push(currentCommand);
+						else if(currentCommand->busPacketStatus == RECEIVED)
+						{
+							cout << "closed page removing packet \n";
+							planes[currentCommand->plane].dataGone();
+							delete currentCommand;
+							no_reg_room = false;
+						}
+						else
+						{
+							cout << "no reg room is being triggered \n";
+							// don't null out this command until we've finished it
+							no_reg_room = true;
+						}
+					}
+					else if(cfg.RW_INTERLEAVE_ENABLE && currentCommand->busPacketStatus == RECEIVED && !cfg.OPEN_ROW_ENABLE)
+					{
+						cout << "closed page alternate removing packet \n";
+						planes[currentCommand->plane].dataGone();
+						delete currentCommand;
 						no_reg_room = false;
 					}
 					else
 					{
+						// don't want to overwrite a recieved status is the packet has been sent
+						if(currentCommand->busPacketStatus != RECEIVED)
+							currentCommand->busPacketStatus = HELD;
 						no_reg_room = true;
 					}
 					break;
@@ -416,12 +453,14 @@ void Die::update(void){
 							open_row[currentCommand->plane] = currentCommand->block;
 						}
 						planes[currentCommand->plane].readFromData();
+						currentCommand->busPacketStatus = INBOUND;
 						returnDataPackets.push(currentCommand);
 						parentNVDIMM->GCReadDone(currentCommand->virtualAddress);
 						no_reg_room = false;
 					}
 					else
 					{
+						currentCommand->busPacketStatus = HELD;
 						no_reg_room = true;
 					}
 					break;
@@ -496,6 +535,23 @@ void Die::update(void){
 				    }
 				}
 			}
+			// allow dram data to be sent back in the middle of access
+			else if(!cfg.OPEN_ROW_ENABLE && CYCLES_TO_DATA > 0 && controlCyclesLeft[i] <= (READ_CYCLES - CYCLES_TO_DATA) && 
+				(currentCommand->busPacketType == READ || currentCommand->busPacketType == GC_READ) && 
+				currentCommand->busPacketStatus != INBOUND && currentCommand->busPacketStatus != RECEIVED)
+			{	
+				// makes sure that there's room in the registers for this read data
+				if(!cfg.RW_INTERLEAVE_ENABLE || planes[currentCommand->plane].checkCacheReg())
+				{
+					cout << "CYCLES_TO_DATA is " << CYCLES_TO_DATA << "\n";
+					cout << "closed page sending the data back \n";
+					currentCommand->busPacketStatus = INBOUND;
+					returnDataPackets.push(currentCommand);
+					planes[currentCommand->plane].readFromData();
+				}
+			}
+			
+
 			// sanity check
 			if(controlCyclesLeft[i] > 0)
 			{
@@ -571,15 +627,21 @@ void Die::update(void){
 											 returnDataPackets.front()->die, 
 											 returnDataPackets.front()->plane, 
 											 IDLE);
-					}
-					planes[returnDataPackets.front()->plane].dataGone();
+					}				
 					channel_pointer->sendToController(returnDataPackets.front());
 					channel_pointer->releaseChannel(BUFFER, id);		
-					returnDataPackets.pop();
 					sending = false; // this flag is being reused for a similar but slightly different purpose here
 					                 // in the buffered case it is used to keep us from sending data back over the bus when there is a read command waiting
 					                 // here is it used to track whether we are sending data back so we can schedule a new read
 					                 // So, its almost the same thing but not quite
+					returnDataPackets.front()->busPacketStatus = RECEIVED;
+					if(cfg.OPEN_ROW_ENABLE || CYCLES_TO_DATA == 0)
+					{
+						planes[returnDataPackets.front()->plane].dataGone();
+						// Delete the ChannelPacket since READ is done. This must be done to prevent memory leaks.
+						delete returnDataPackets.front();
+					}
+					returnDataPackets.pop();
 				}
 				if(cfg.CRIT_LINE_FIRST && dataCyclesLeft == critBeat)
 				{
@@ -803,6 +865,7 @@ void Die::addRefreshes(ChannelPacket *packet)
 		{
 			ChannelPacket *new_packet = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, p, packet->die, packet->package, NULL);
 			currentCommands[p] = new_packet;
+			currentCommands[p]->busPacketStatus = RUNNING;
 			controlCyclesLeft[p] = REFRESH_CYCLES;
 
 			refreshing[p] = true;
@@ -813,7 +876,8 @@ void Die::addRefreshes(ChannelPacket *packet)
 	else
 	{
 		ChannelPacket *new_packet = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, plane_rpointer, packet->die, packet->package, NULL);
-		currentCommands[plane_rpointer] =new_packet;
+		currentCommands[plane_rpointer] = new_packet;
+		currentCommands[plane_rpointer]->busPacketStatus = RUNNING;
 		controlCyclesLeft[plane_rpointer] = REFRESH_CYCLES;
 		refreshing[plane_rpointer] = true;
 

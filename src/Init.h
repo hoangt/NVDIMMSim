@@ -134,14 +134,14 @@ namespace NVDSim
 			uint64_t READ_TIME;
 			uint64_t WRITE_TIME;
 			uint64_t ERASE_TIME;
+			uint64_t TIME_TO_DATA;
 			uint64_t COMMAND_LENGTH;
 			uint64_t LOOKUP_TIME;
 			uint64_t BUFFER_LOOKUP_TIME;
 			uint64_t QUEUE_ACCESS_TIME;
 			
 			uint64_t REFRESH_TIME;
-			bool OPEN_ROW_ENABLE;
-			uint64_t ROW_HIT_TIME;
+			bool OPEN_ROW_ENABLE;		
 			
 			uint64_t EPOCH_CYCLES;
 			float CYCLE_TIME;
@@ -242,13 +242,13 @@ namespace NVDSim
 				READ_TIME(25),
 				WRITE_TIME(50),
 				ERASE_TIME(150),
+				TIME_TO_DATA(12),
 				COMMAND_LENGTH(56),
 				LOOKUP_TIME(0),
 				BUFFER_LOOKUP_TIME(30),
 				QUEUE_ACCESS_TIME(75),
 				REFRESH_TIME(40),
 				OPEN_ROW_ENABLE(0),
-				ROW_HIT_TIME(12),
 				EPOCH_CYCLES(200000),
 				CYCLE_TIME(1.51),
 				SYSTEM_CYCLE(1.51),

@@ -50,7 +50,7 @@ namespace NVDSim{
 	{
 		FREE,
 		BUSY,
-		CAN_RW,
+		CAN_WRITE,
 		CAN_READ,
 		CAN_ACCEPT_DATA,
 		WAITING,

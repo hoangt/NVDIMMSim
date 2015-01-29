@@ -490,7 +490,7 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 
 bool Ftl::addTransaction(FlashTransaction &t){
     // if we're using start gap then we have to exclude an extra page from the address space
-    if(t.address < VIRTUAL_TOTAL_SIZE*1024)
+    if(t.address < VIRTUAL_TOTAL_SIZE)
     {
 	// we are going to favor reads over writes
 	// so writes get put into a special lower prioirty queue

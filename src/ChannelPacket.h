@@ -57,10 +57,21 @@ namespace NVDSim
 		SELF_REFRESH
 	};
 
+	enum ChannelPacketStatus
+	{		
+		ISSUED,
+		OUTBOUND,
+		RUNNING,
+		HELD,
+		INBOUND,
+		RECEIVED
+	};
+
 	class ChannelPacket
 	{
 	public:
 		//Fields
+		ChannelPacketStatus busPacketStatus;
 		ChannelPacketType busPacketType;
 
 		uint64_t page;

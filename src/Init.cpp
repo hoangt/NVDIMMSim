@@ -343,6 +343,8 @@ namespace NVDSim
 				convert_uint64_t(cfg.WRITE_TIME, value, key);
 			else if (key.compare("ERASE_TIME") == 0)
 				convert_uint64_t(cfg.ERASE_TIME, value, key);
+			else if (key.compare("TIME_TO_DATA") == 0)
+				convert_uint64_t(cfg.TIME_TO_DATA, value, key);
 			else if (key.compare("COMMAND_LENGTH") == 0)
 				convert_uint64_t(cfg.COMMAND_LENGTH, value, key);
 			else if (key.compare("LOOKUP_TIME") == 0)
@@ -355,8 +357,6 @@ namespace NVDSim
 				convert_uint64_t(cfg.REFRESH_TIME, value, key);
 			else if (key.compare("OPEN_ROW_ENABLE") == 0)
 				convert_bool(cfg.OPEN_ROW_ENABLE, value, key);
-			else if (key.compare("ROW_HIT_TIME") == 0)
-				convert_uint64_t(cfg.ROW_HIT_TIME, value, key);
 			else if (key.compare("EPOCH_CYCLES") == 0)
 				convert_uint64_t(cfg.EPOCH_CYCLES, value, key);
 			else if (key.compare("CYCLE_TIME") == 0)
