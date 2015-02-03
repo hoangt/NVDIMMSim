@@ -351,6 +351,7 @@ bool Die::canDieRefresh()
 		}
 		if(free_count == cfg.PLANES_PER_DIE)
 		{
+			cout << "free count was " << free_count << " so we can refresh \n";
 			return true;
 		}
 		else
@@ -431,6 +432,7 @@ void Die::update(void){
 					}
 					else
 					{
+						
 						// don't want to overwrite a recieved status is the packet has been sent
 						if(currentCommand->busPacketStatus != RECEIVED)
 							currentCommand->busPacketStatus = HELD;
@@ -520,6 +522,7 @@ void Die::update(void){
 				}
 				else if(bpt == AUTO_REFRESH)
 				{
+					cout << "deleting a refresh command \n";
 					delete currentCommand;
 				}
 
@@ -781,24 +784,12 @@ bool Die::writeCancel(uint64_t plane)
     // make sure we're still writing
     if(currentCommands[plane]->busPacketType == WRITE || currentCommands[plane]->busPacketType == SET_WRITE || currentCommands[plane]->busPacketType == PRESET_WRITE)
     {
-        // see if there's room to readd this command back to the controller queue
-	if(buffer->channel->controller->checkQueueWrite(currentCommands[plane]))
-	{
-	    // add the data packet back to the controller queue
+	    // add the write packet back to the controller queue
 	    bool temp = buffer->channel->controller->readdPacket(currentCommands[plane]);
 	    
-	    // don't add the next packet if the first packet fails
+	    //don't remove stuff if we failed to add the packet back to the controller queue
 	    if(temp == true)
-	    {
-		ChannelPacket *dataPacket = new ChannelPacket(DATA, currentCommands[plane]->virtualAddress, currentCommands[plane]->physicalAddress, currentCommands[plane]->page, 
-							      currentCommands[plane]->block, currentCommands[plane]->plane, currentCommands[plane]->die, currentCommands[plane]->package,
-							      NULL);
-		temp = buffer->channel->controller->readdPacket(dataPacket);
-
-		// only remove the write if everything worked
-		if(temp == true)
-		{
-		  
+	    {		  
 		  // have to reset the logger for this write
 		  if (cfg.LOGGING)
 		  {
@@ -814,24 +805,11 @@ bool Die::writeCancel(uint64_t plane)
 		  
 		  // cancel operation worked
 		  return true;
-		}
-		else
-		{
-		  return false;
-		}
 	    }
 	    else
 	    {
 	      return false;
 	    }
-	}
-	else
-	{
-	    // we couldn't readd the packet back on the queue so we couldn't cancel the write
-	    // canceling would drop the write in this case
-	    // so we can't do it
-	    return false;
-	}
     }
 
     // there wasn't anything to cancel
@@ -859,7 +837,8 @@ bool Die::isCurrentPAddr(uint64_t plane, uint64_t block, uint64_t physAddr)
 
 void Die::addRefreshes(ChannelPacket *packet)
 {
-	if(cfg.refreshLevel == PerVault || cfg.refreshLevel == PerChannel)
+	//if(cfg.refreshLevel == PerVault || cfg.refreshLevel == PerChannel)
+	if(cfg.refreshLevel == PerChannel)
 	{
 		for(uint64_t p = 0; p < cfg.PLANES_PER_DIE; p++)
 		{

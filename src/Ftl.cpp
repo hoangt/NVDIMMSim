@@ -995,22 +995,20 @@ void Ftl::gap_movement(void)
 
 void Ftl::handle_gap_write(uint64_t write_vAddr)
 {
-    ChannelPacket *commandPacket, *dataPacket;
+    ChannelPacket *commandPacket;
 
     // the virtual address should be the same as the read even though we've moved the gap
     // so we pull the virtual address from the gap read callback
-    dataPacket = Ftl::translate(DATA, write_vAddr, gap);
     commandPacket = Ftl::translate(GC_WRITE, write_vAddr, gap);
 
     // Check to see if there is enough room for both packets in the queue (need two open spots).
-    bool queue_open = controller->checkQueueWrite(dataPacket);
+    bool queue_open = controller->addPacket(commandPacket);
     
     // no room so we can't place the write there right now
     if (!queue_open)
     {
 	// These packets are not being used. Since they were dynamically allocated, we must delete them to prevent
 	// memory leaks.
-	delete dataPacket;
 	delete commandPacket;
 	pending_gap_write = true;
     }
@@ -1022,13 +1020,7 @@ void Ftl::handle_gap_write(uint64_t write_vAddr)
 	{
 	    // Start the logging for this access.
 	    log->access_start(write_vAddr, GC_DATA_WRITE);
-	}
-
-	// Add the packets to the controller queue.
-	// Do not need to check the return values for these since checkQueueWrite() was called.
-	controller->addPacket(dataPacket);
-	controller->addPacket(commandPacket);
-	
+	}	
 	gap_rotate();
     }
 }
@@ -1081,7 +1073,7 @@ write_location Ftl::start_gap_write_location(uint64_t vAddr)
 void Ftl::handle_write(bool gc)
 {
     uint64_t vAddr = currentTransaction.address, pAddr;
-    ChannelPacket *commandPacket, *dataPacket;
+    ChannelPacket *commandPacket;
     bool done = false;
     uint64_t block, page;
     write_location loc;
@@ -1147,18 +1139,16 @@ void Ftl::handle_write(bool gc)
 	else
 	    write_type = WRITE;
 
-	dataPacket = Ftl::translate(DATA, vAddr, pAddr);
 	commandPacket = Ftl::translate(write_type, vAddr, pAddr);
 	
 	// Check to see if there is enough room for both packets in the queue (need two open spots).
-	bool queue_open = controller->checkQueueWrite(dataPacket);
+	bool queue_open = controller->addPacket(commandPacket);
 	
 	// no room so we can't place the write there right now
 	if (!queue_open)
 	{
 	    // These packets are not being used. Since they were dynamically allocated, we must delete them to prevent
 	    // memory leaks.
-	    delete dataPacket;
 	    delete commandPacket;
 	    
 	    ctrl_write_queues_full = true;
@@ -1166,12 +1156,7 @@ void Ftl::handle_write(bool gc)
 	}
 	// had room, place the write
 	else if (queue_open)
-	{
-	    // Add the packets to the controller queue.
-	    // Do not need to check the return values for these since checkQueueWrite() was called
-	    controller->addPacket(dataPacket);
-	    controller->addPacket(commandPacket);
-	    
+	{	    
 	    // made this a function cause the code was repeated a bunch of places
 	    write_success(block, page, vAddr, pAddr, gc, mapped);
 	    

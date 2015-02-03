@@ -55,6 +55,13 @@ Controller::Controller(Configuration &nv_cfg, NVDIMM* parent, Logger* l) :
 
 	pendingPackets = vector<list <ChannelPacket *> >(cfg.NUM_PACKAGES, list<ChannelPacket *>());
 
+	channel_writing = new bool [cfg.NUM_PACKAGES]; // used to let up know that we need to send the write command
+	channel_write_pointer = vector<list<ChannelPacket*>::iterator>(cfg.NUM_PACKAGES, list<ChannelPacket*>::iterator());
+	for(uint64_t i = 0; i < cfg.NUM_PACKAGES; i++)
+	{
+		channel_write_pointer[i] = ctrlQueues[i].end();
+	}
+
 	paused = new bool [cfg.NUM_PACKAGES];
 	forced_writing = new bool [cfg.NUM_PACKAGES]; // used when scheduling to avoid descending into FIFO mode
 	busy_scoreboard = new bool** [cfg.NUM_PACKAGES]; // I'm not sure if this is better or worse than just calling dieBusy before picking a potential packet
@@ -67,7 +74,7 @@ Controller::Controller(Configuration &nv_cfg, NVDIMM* parent, Logger* l) :
 	}
 
 	die_counter = 0;
-	currentClockCycle = 0;
+	currentClockCycle = 0;	
 
 	REFRESH_CTRL_PERIOD = 0;
 
@@ -222,20 +229,17 @@ void Controller::receiveFromChannel(ChannelPacket *busPacket){
 			abort();
 			break;
 	}
-
-	// Delete the ChannelPacket since READ is done. This must be done to prevent memory leaks.
-	//delete busPacket;
 }
 
 // this is only called on a write as the name suggests
-bool Controller::checkQueueWrite(ChannelPacket *p)
+/*bool Controller::checkQueueWrite(ChannelPacket *p)
 {
 	if ((ctrlQueues[p->package].size() + 1 < cfg.CTRL_QUEUE_LENGTH) || (cfg.CTRL_QUEUE_LENGTH == 0))
 		return true;
 	else
 		return false;
 	return false;
-}
+	}*/
 
 bool Controller::addPacket(ChannelPacket *p){
 	if ((ctrlQueues[p->package].size() < cfg.CTRL_QUEUE_LENGTH) || (cfg.CTRL_QUEUE_LENGTH == 0))
@@ -310,11 +314,13 @@ void Controller::update(void){
 	uint64_t i;	
 	//Look through queues and send oldest packets to the appropriate channel
 	for (i = 0; i < cfg.NUM_PACKAGES; i++){
+		//cout << "channel write pointer for channel " << i << " is starting at " << (*channel_write_pointer[i])->virtualAddress << "\n";
 		bool done = 0;
-		// used to temporarily skip a refresh command to a die that is currenty busy so that other commands can be issued to other dies
+		// used to temporarily skip a refresh command to a dies/planes that is currenty busy so that other commands can be issued to other dies/planes
 		bool refresh_skip = false;
+		uint64_t die_rskipped = cfg.DIES_PER_PACKAGE+1;
 		// used to prevent the scheduling of write commands for data that could not yet be sent
-		bool data_skip = false;
+		bool write_skip = false;
 		Channel* channel_pointer;
 		// iterate throught the queue for this channel each time until we find the oldest thing that we can actually issue
 		list<ChannelPacket*>::iterator ctrl_it = ctrlQueues[i].begin();
@@ -323,20 +329,7 @@ void Controller::update(void){
 		// make a temporary list of the write addresses to check for hazards
 		list<uint64_t> temp_write_addrs;
 		while(!done)
-		{
-			
-			if(ctrl_it != ctrlQueues[i].end())
-			{
-				// see if we need to skip the current command because its a write whose data couldn't be sent
-				if(((*ctrl_it)->busPacketType == WRITE || (*ctrl_it)->busPacketType == GC_WRITE) && data_skip)
-				{
-					// just advance the iterator in this case to skip the write
-					ctrl_it++;
-					// reset data skip so it doesn't mess up some later date / write pair
-					data_skip = false;
-				}
-			}
-			
+		{		       			
 			// make sure that we have something to do and we're not already doing something
 			if ((ctrl_it != ctrlQueues[i].end() || (cfg.REFRESH_ENABLE && refreshCountdown[i] <= 0 && !refresh_skip)) && outgoingPackets[i]==NULL)
 			{				
@@ -353,27 +346,17 @@ void Controller::update(void){
 				// if we are simulating refreshes and its time to issue an autorefresh to this
 				// die, then do so
 				ChannelPacket *potentialPacket;
-				if(cfg.REFRESH_ENABLE && refreshCountdown[i] <= 0 && !refresh_skip)
+				if(cfg.REFRESH_ENABLE && refreshCountdown[i] <= 0 && !refresh_skip && !channel_writing[i])
 				{
-					if(!ctrlQueues[i].empty())
-					{
-						// this prevents a refersh from coming between a write and data packet
-						// this works with scheduling because the data would not have been sent if there's a read waiting
-						if(ctrlQueues[i].front()->busPacketType == WRITE)
-						{
-							potentialPacket = *ctrl_it;
-						}
-						else
-						{
-							// autorefresh so we don't care about the address, just the command
-							potentialPacket = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, 0, die_rpointer[i], i, NULL);
-						}
-					}
-					else
-					{
-						// autorefresh so we don't care about the address, just the command
-						potentialPacket = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, 0, die_rpointer[i], i, NULL);
-					}
+					// autorefresh so we don't care about the address, just the command
+					potentialPacket = new ChannelPacket(AUTO_REFRESH, 0, 0, 0, 0, 0, die_rpointer[i], i, NULL);
+				}
+				// if we previously sent data on this channel, then the next thing we send has to be a write command
+				// we try this first on each update, if we can't then we go through the queue and try to issue to other dies
+				else if(channel_writing[i] && channel_write_pointer[i] != ctrlQueues[i].end() && !write_skip)
+				{
+					potentialPacket = *channel_write_pointer[i];
+					ctrl_it = channel_write_pointer[i];
 				}
 				// if we are simulating read around write scheduling, then see where the first read is
 				else if(cfg.SCHEDULE)
@@ -391,7 +374,7 @@ void Controller::update(void){
 					// if the front of the queue is data 
 					// and we currently are not at the threshold for issuing writes
 					// then we need to look for a read
-					if((*ctrl_it)->busPacketType == DATA && !forced_writing[i])
+					if(((*ctrl_it)->busPacketType == WRITE || (*ctrl_it)->busPacketType == GC_WRITE) && !forced_writing[i])
 					{
 						// save the  current iterator in case there are no reads to find
 						list<ChannelPacket*>::iterator ctrl_save = ctrl_it;
@@ -461,9 +444,26 @@ void Controller::update(void){
 					}
 				}
 				// NOT SCHEDULING
+				// we have something we can do
+				else if(ctrl_it != ctrlQueues[i].end())
+				{
+					// if our current command is a write then we first need to try to send a data packet
+					if((*ctrl_it)->busPacketType == WRITE)
+					{
+						// create a copy of the write packet but make it a data packet
+						potentialPacket = new ChannelPacket(DATA, (*ctrl_it)->virtualAddress, (*ctrl_it)->physicalAddress, (*ctrl_it)->page, (*ctrl_it)->block, 
+										    (*ctrl_it)->plane, (*ctrl_it)->die, (*ctrl_it)->package, NULL);
+					}
+					else
+					{
+						potentialPacket = *ctrl_it;
+					}
+				}
+				// Can't refresh and don't have anything else to do
 				else
 				{
-					potentialPacket = *ctrl_it;
+					done = true;
+					continue;
 				}
 				
 				// figure out which channel we'll be using depending on what we're sending, data or command stuff
@@ -475,25 +475,28 @@ void Controller::update(void){
 				{
 					channel_pointer = (*packages)[i].channel;
 				}
+
+				//cout << "the potential packet that we've settled on for channel " << i << " is a " << potentialPacket->busPacketType << "\n";
 				
 				// this part of the code is sending the packet that the previous section decided on
 				// ******************************
 				// repeat refresh so don't do anything
-				if(potentialPacket->busPacketType != AUTO_REFRESH || (allDiesRefreshReady(i) && outgoingPackets[i] == NULL))
+				// don't issue commands to dies/planes that have a refresh pending
+				if((potentialPacket->busPacketType != AUTO_REFRESH && !(refresh_skip && die_rskipped == potentialPacket->die)) || (allDiesRefreshReady(i) && outgoingPackets[i] == NULL))
 				{
 					// see if this die is ready for a new transaciton
 					// no point in doing any other calculation otherwise
 					// both channels point to the same dies so it doesn't matter which channel pointer this is
 					PlaneState dieBusy = channel_pointer->buffer->dies[potentialPacket->die]->isDieBusy(potentialPacket->plane, potentialPacket->block); 
-					if(((dieBusy == FREE) ||
-					    // should allow us to send write data to a buffer that is currently writing
-					    (potentialPacket->busPacketType == DATA && (dieBusy == CAN_ACCEPT_DATA)) ||
+					//cout << "the die busy status is " << dieBusy << "\n";
+					// should allow us to send write data to a buffer that is currently writing
+					if(((potentialPacket->busPacketType == DATA && (dieBusy == CAN_ACCEPT_DATA || dieBusy == FREE)) ||
 					    // should allow us to send a write command to a plane that has a loaded cache register 		      
 					    ((potentialPacket->busPacketType == WRITE  || potentialPacket->busPacketType == GC_WRITE) && (dieBusy == WAITING || dieBusy == CAN_WRITE)) ||
 					    // should allow us to send a read command to a plane that has a free data reg
 					    // this allows us to interleave reads so that while one sending data back from the cache
 					    // reg, the other can start reading from the array into the data reg
-					    ((potentialPacket->busPacketType == READ || potentialPacket->busPacketType == GC_READ) && (dieBusy == CAN_READ))) ||
+					    ((potentialPacket->busPacketType == READ || potentialPacket->busPacketType == GC_READ) && (dieBusy == CAN_READ || dieBusy == FREE))) ||
 					   (cfg.REFRESH_ENABLE && potentialPacket->busPacketType == AUTO_REFRESH && channel_pointer->buffer->dies[potentialPacket->die]->canDieRefresh()))
 					{
 						// the die can accomodate this operation
@@ -526,15 +529,30 @@ void Controller::update(void){
 							
 							// we're now sending this packet out so mark it as such
 							potentialPacket->busPacketStatus = OUTBOUND;
-							outgoingPackets[i] = potentialPacket;
+							outgoingPackets[i] = potentialPacket;							
 							if(cfg.REFRESH_ENABLE && potentialPacket->busPacketType == AUTO_REFRESH)
 							{
+								cout << "issued refresh \n";
 								refreshCountdown[i] = REFRESH_CTRL_PERIOD;
+								die_rpointer[i]++;
+								if(die_rpointer[i] >= cfg.DIES_PER_PACKAGE)
+								{
+									die_rpointer[i] = 0;
+								}
+							}
+							else if(potentialPacket->busPacketType == DATA)
+							{
+								cout << "issued a data packet \n";
+								channel_write_pointer[i] = ctrl_it;
+								//cout << "channel write pointer for channel " << i << " is pointed at " << (*channel_write_pointer[i])->virtualAddress << "\n";
+								channel_writing[i] = true;
 							}
 							else
 							{
 								ctrlQueues[i].erase(ctrl_it);
 								parentNVDIMM->queuesNotFull();
+								channel_writing[i] = false;
+								channel_write_pointer[i] = ctrlQueues[i].end();
 							}
 							
 							// Calculate the time it takes to send this packet to the devices
@@ -562,6 +580,7 @@ void Controller::update(void){
 									{
 										// the controller cannot send data to the die faster than the die can receive
 										channelBeatsLeft[i] = divide_params_64b(divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_DATA_WIDTH) * cfg.DEVICE_CYCLE, cfg.CYCLE_TIME); 
+										//cout << "channel beats left " << channelBeatsLeft[i] << "\n";
 									}
 									else
 									{
@@ -587,19 +606,26 @@ void Controller::update(void){
 						{
 							// so just move on to the next channel since no pending command will be able to use this channel during this cycle
 							done = true;
+							// if this was a data packet then we'll recreate it next time and we should delete it here
+							if(potentialPacket->busPacketType == DATA)
+							{
+								delete potentialPacket;
+							}
 						}
 					}
 					// die not available
 					else
 					{
-						// see if we just failed to schedule a data packet
-						// if so make sure we don't schedule its write without it
-						if(potentialPacket->busPacketType == DATA)
+						// see if we just failed to schedule a write packet
+						// if so, then say we're skipping writes for now and start looking for
+						// something else to do this update
+						if(potentialPacket->busPacketType == WRITE && !write_skip)
 						{
-							data_skip = true;
+							write_skip = true;
+							ctrl_it = ctrlQueues[i].begin();
+							continue;
 						}
-						
-						if(potentialPacket->busPacketType != AUTO_REFRESH)
+						else if(potentialPacket->busPacketType != AUTO_REFRESH)
 						{
 							// try the next command in the queue to see if its die is available
 							ctrl_it++;	
@@ -608,11 +634,15 @@ void Controller::update(void){
 						else
 						{
 							done = true;
+							if(potentialPacket->busPacketType == DATA)
+							{
+								delete potentialPacket;
+							}
 						}	
 					}
 				}
 				// command was a refresh and not all required units are ready for the refresh
-				else
+				else if(potentialPacket->busPacketType == AUTO_REFRESH)
 				{
 					// if we're refreshing whole channels then we're done here
 					if(cfg.refreshLevel == PerChannel)
@@ -623,9 +653,30 @@ void Controller::update(void){
 					else
 					{
 						refresh_skip = true;
+						die_rskipped = die_rpointer[i];
 						continue;
 					}
 				}
+				// command was not a refresh but we still couldn't issue, try something else
+				else if(outgoingPackets[i] == NULL)				
+				{
+					ctrl_it++;
+					if(potentialPacket->busPacketType == DATA)
+					{
+						delete potentialPacket;
+					}
+					continue;
+				}
+				// we actually are doing something already for this thing somehow so we're done
+				else
+				{
+					if(potentialPacket->busPacketType == DATA)
+					{
+						delete potentialPacket;
+					}
+					done = true;
+				}
+
 			}
 			// no pending command for this channel and not time for a refresh
 			else
@@ -722,6 +773,7 @@ void Controller::update(void){
 				}
 				if (channel_pointer->hasChannel(CONTROLLER, 0)){
 					channelBeatsLeft[i]--;
+					cout << "we're sending stuff on channel " << i << " and we have " << channelBeatsLeft[i] << " cycles left at " << currentClockCycle << "\n";
 					if (channelBeatsLeft[i] == 0){
 						if(cfg.REFRESH_ENABLE && cfg.refreshLevel == PerChannel && outgoingPackets[i]->busPacketType == AUTO_REFRESH )
 						{

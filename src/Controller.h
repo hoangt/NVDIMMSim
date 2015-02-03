@@ -125,6 +125,8 @@ namespace NVDSim{
 			std::vector<std::list <ChannelPacket *> > pendingPackets; //there can be a pending package for each plane of each die of each package
 			std::vector<uint64_t> channelXferCyclesLeft; //cycles per channel beat
 			std::vector<uint64_t> channelBeatsLeft; //channel beats per page
+			std::vector<list<ChannelPacket*>::iterator> channel_write_pointer;
+			bool* channel_writing;
 
 			// DRAM Refresh stuff
 			std::vector<uint64_t> die_rpointer; // keeps track of which die is up for the next refresh
