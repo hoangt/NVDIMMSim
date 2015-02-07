@@ -837,8 +837,7 @@ bool Die::isCurrentPAddr(uint64_t plane, uint64_t block, uint64_t physAddr)
 
 void Die::addRefreshes(ChannelPacket *packet)
 {
-	//if(cfg.refreshLevel == PerVault || cfg.refreshLevel == PerChannel)
-	if(cfg.refreshLevel == PerChannel)
+	if(cfg.refreshLevel == PerVault || cfg.refreshLevel == PerChannel)
 	{
 		for(uint64_t p = 0; p < cfg.PLANES_PER_DIE; p++)
 		{

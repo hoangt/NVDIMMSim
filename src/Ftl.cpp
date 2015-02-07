@@ -137,13 +137,15 @@ Ftl::Ftl(Configuration &nv_cfg, Controller *c, Logger *l, NVDIMM *p) :
 	// get the bit lengths of various parts of the address for translating purposes
 	// unless we're doing addressing the old way and then whatever
 	if(cfg.addressScheme != Default)
-	{
+	{		
+		totalBitWidth = nvdimm_log2(VIRTUAL_TOTAL_SIZE);
 		channelBitWidth = nvdimm_log2(cfg.NUM_PACKAGES);
 		vaultBitWidth = nvdimm_log2(cfg.DIES_PER_PACKAGE);
 		bankBitWidth = nvdimm_log2(cfg.PLANES_PER_DIE);
 		rowBitWidth = nvdimm_log2(cfg.BLOCKS_PER_PLANE);
 		colBitWidth = nvdimm_log2(cfg.PAGES_PER_BLOCK);
 		colOffset = nvdimm_log2(cfg.NV_PAGE_SIZE);
+		cout << "virtual total size is " << VIRTUAL_TOTAL_SIZE << " and totalBitWidth is " << totalBitWidth << " \n";
 		cout << "offsets are " << "chan: " << channelBitWidth << " r: " << vaultBitWidth << " b: " << bankBitWidth << " row: " << rowBitWidth << " col: " << colBitWidth << " offset: " << colOffset << "\n";
 	}
 }
@@ -490,23 +492,35 @@ bool Ftl::checkQueueAddTransaction(FlashTransaction &t)
 
 bool Ftl::addTransaction(FlashTransaction &t){
     // if we're using start gap then we have to exclude an extra page from the address space
-    if(t.address < VIRTUAL_TOTAL_SIZE)
+    if(t.address > VIRTUAL_TOTAL_SIZE)
     {
-	// we are going to favor reads over writes
-	// so writes get put into a special lower prioirty queue
-	if(cfg.FTL_QUEUE_HANDLING)
-	{
-	    return checkQueueAddTransaction(t);
-	}
-	// no scheduling, so just shove everything into the read queue
-	else
-	{
-	    return attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
-	}
+	    if(cfg.wearLevelingScheme == DirectTranslation && cfg.addressScheme != Default)
+	    {
+		    cout << "address was " << hex << t.address << dec << "\n";
+		    uint64_t temp_address = t.address << (64-(totalBitWidth-1));
+		    t.address = temp_address >> (64-(totalBitWidth-1));
+		    
+		    cout << "address is now " << hex << t.address << dec << "\n";
+		    cout << "total size is " << hex << VIRTUAL_TOTAL_SIZE << dec << "\n";
+	    }
+	    else
+	    {
+		    ERROR("Tried to add a transaction with a virtual address that was out of bounds");
+		    exit(5001);
+	    }
     }
-    
-    ERROR("Tried to add a transaction with a virtual address that was out of bounds");
-    exit(5001);
+
+    // we are going to favor reads over writes
+    // so writes get put into a special lower prioirty queue
+    if(cfg.FTL_QUEUE_HANDLING)
+    {
+	    return checkQueueAddTransaction(t);
+    }
+    // no scheduling, so just shove everything into the read queue
+    else
+    {
+	    return attemptAdd(t, &transQueue, cfg.FTL_QUEUE_LENGTH);
+    }
 }
 
 // this is the main function of the ftl, it will run on every clock tick

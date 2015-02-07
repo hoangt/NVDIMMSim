@@ -169,12 +169,13 @@ namespace NVDSim{
 			std::list<FlashTransaction> transQueue; 
 
 			// address translation variables
-			unsigned    channelBitWidth;
+			unsigned	totalBitWidth;
+			unsigned	channelBitWidth;
 			unsigned	vaultBitWidth;
 			unsigned	bankBitWidth;
 			unsigned	rowBitWidth;
-			unsigned    colBitWidth;
-			unsigned    colOffset;
+			unsigned	colBitWidth;
+			unsigned	colOffset;
 	};
 }
 #endif

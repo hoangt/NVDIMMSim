@@ -450,9 +450,19 @@ void Controller::update(void){
 					// if our current command is a write then we first need to try to send a data packet
 					if((*ctrl_it)->busPacketType == WRITE)
 					{
-						// create a copy of the write packet but make it a data packet
-						potentialPacket = new ChannelPacket(DATA, (*ctrl_it)->virtualAddress, (*ctrl_it)->physicalAddress, (*ctrl_it)->page, (*ctrl_it)->block, 
-										    (*ctrl_it)->plane, (*ctrl_it)->die, (*ctrl_it)->package, NULL);
+						// only allow one outstanding write per channel at a time
+						// TODO: verify that this is not an overly ineffcient way to do schedule things
+						if(channel_write_pointer[i] == ctrlQueues[i].end())
+						{
+							// create a copy of the write packet but make it a data packet
+							potentialPacket = new ChannelPacket(DATA, (*ctrl_it)->virtualAddress, (*ctrl_it)->physicalAddress, (*ctrl_it)->page, (*ctrl_it)->block, 
+											    (*ctrl_it)->plane, (*ctrl_it)->die, (*ctrl_it)->package, NULL);
+						}
+						else
+						{
+							ctrl_it++;
+							continue;
+						}
 					}
 					else
 					{
@@ -540,19 +550,33 @@ void Controller::update(void){
 									die_rpointer[i] = 0;
 								}
 							}
-							else if(potentialPacket->busPacketType == DATA)
+							else if(potentialPacket->busPacketType == DATA && channel_write_pointer[i] == ctrlQueues[i].end())
 							{
-								cout << "issued a data packet \n";
+								cout << "channel " << i << " issued a data packet \n";
 								channel_write_pointer[i] = ctrl_it;
 								//cout << "channel write pointer for channel " << i << " is pointed at " << (*channel_write_pointer[i])->virtualAddress << "\n";
 								channel_writing[i] = true;
+							}
+							else if(channel_write_pointer[i] != ctrlQueues[i].end() && potentialPacket->busPacketType == WRITE)
+							{
+								if(potentialPacket->virtualAddress == (*channel_write_pointer[i])->virtualAddress)
+								{
+									ctrlQueues[i].erase(ctrl_it);
+									parentNVDIMM->queuesNotFull();
+									cout << "channel " << i << " is no longer writing \n";
+									channel_writing[i] = false;
+									channel_write_pointer[i] = ctrlQueues[i].end();
+								}
+								else
+								{
+									ERROR("Issued a write that did not have a matching data packet");
+									abort();
+								}
 							}
 							else
 							{
 								ctrlQueues[i].erase(ctrl_it);
 								parentNVDIMM->queuesNotFull();
-								channel_writing[i] = false;
-								channel_write_pointer[i] = ctrlQueues[i].end();
 							}
 							
 							// Calculate the time it takes to send this packet to the devices
@@ -628,16 +652,16 @@ void Controller::update(void){
 						else if(potentialPacket->busPacketType != AUTO_REFRESH)
 						{
 							// try the next command in the queue to see if its die is available
+							if(potentialPacket->busPacketType == DATA)
+							{
+								delete potentialPacket;
+							}
 							ctrl_it++;	
 							continue;
 						}
 						else
 						{
 							done = true;
-							if(potentialPacket->busPacketType == DATA)
-							{
-								delete potentialPacket;
-							}
 						}	
 					}
 				}
@@ -906,7 +930,8 @@ bool Controller::dataReady(uint64_t package, uint64_t die, uint64_t plane)
     {
 	if(ctrlQueues[package].front()->busPacketType == READ && ctrlQueues[package].front()->plane == plane)
 	{
-	    return 1;
+		//return 1;
+		return 0;
 	}
 	return 0;
     }

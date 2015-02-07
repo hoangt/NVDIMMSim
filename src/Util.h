@@ -66,10 +66,10 @@ string strip(string input, string chars = " \t\f\v\n\r");
 list<string> split(string input, string chars = " \t\f\v\n\r", size_t maxsplit=string::npos);
 
 // Utilities borrowed from DRAMSim2
-unsigned inline nvdimm_log2(unsigned value)
+unsigned inline nvdimm_log2(uint64_t value)
 {
 	unsigned logbase2 = 0;
-	unsigned orig = value;
+	uint64_t orig = value;
 	value>>=1;
 	while (value>0)
 	{

@@ -126,6 +126,7 @@ namespace NVDSim{
 			std::vector<uint64_t> channelXferCyclesLeft; //cycles per channel beat
 			std::vector<uint64_t> channelBeatsLeft; //channel beats per page
 			std::vector<list<ChannelPacket*>::iterator> channel_write_pointer;
+			std::vector<list<ChannelPacket*>::iterator> channel_write_stream_pointer;
 			bool* channel_writing;
 
 			// DRAM Refresh stuff
