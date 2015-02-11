@@ -661,6 +661,11 @@ void Controller::update(void){
 						}
 						else
 						{
+							// die wasn't ready for this refresh packet so delete it
+							if(potentialPacket->busPacketType == AUTO_REFRESH)
+							{
+								delete potentialPacket;
+							}
 							done = true;
 						}	
 					}
@@ -668,6 +673,8 @@ void Controller::update(void){
 				// command was a refresh and not all required units are ready for the refresh
 				else if(potentialPacket->busPacketType == AUTO_REFRESH)
 				{
+					// couldn't issue the refresh so delete it
+					delete potentialPacket;
 					// if we're refreshing whole channels then we're done here
 					if(cfg.refreshLevel == PerChannel)
 					{
