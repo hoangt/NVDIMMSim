@@ -421,8 +421,6 @@ bool Ftl::attemptAdd(FlashTransaction &t, std::list<FlashTransaction> *queue, ui
 		log->log_ftl_queue_event(false, queue);
 	    }
 	}
-
-	cout << "added transaction to address " << t.address << " on cycle " << currentClockCycle << "\n";
 	return true;
     }
 }
@@ -496,12 +494,8 @@ bool Ftl::addTransaction(FlashTransaction &t){
     {
 	    if(cfg.wearLevelingScheme == DirectTranslation && cfg.addressScheme != Default)
 	    {
-		    cout << "address was " << hex << t.address << dec << "\n";
 		    uint64_t temp_address = t.address << (64-(totalBitWidth-1));
 		    t.address = temp_address >> (64-(totalBitWidth-1));
-		    
-		    cout << "address is now " << hex << t.address << dec << "\n";
-		    cout << "total size is " << hex << VIRTUAL_TOTAL_SIZE << dec << "\n";
 	    }
 	    else
 	    {
@@ -540,7 +534,6 @@ void Ftl::update(void){
 	if (busy) 
 	{		
 	    if (lookupCounter <= 0 && !ctrl_write_queues_full){
-		    cout << "issued transaction to address " << currentTransaction.address << " on cycle " << currentClockCycle << "\n";
 			switch (currentTransaction.transactionType){
 				case DATA_READ:
 				{

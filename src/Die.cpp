@@ -85,9 +85,6 @@ void Die::attachToBuffer(Buffer *buff){
 
 
 void Die::receiveFromBuffer(ChannelPacket *busPacket){
-	cout << "die recieved packet of type " << busPacket->busPacketType << " for address " << busPacket->virtualAddress << " on clock cycle " << currentClockCycle << "\n";
-	cout << "package " << busPacket ->package << " die " << busPacket->die << " plane " << busPacket->plane << " row " << busPacket->block << "\n";
-	cout << "open row is " << open_row[busPacket->plane] << "\n";
 	if (busPacket->busPacketType == DATA){
 		planes[busPacket->plane].storeInData(busPacket);
 	} else if (currentCommands[busPacket->plane] == NULL || (busPacket->busPacketType == AUTO_REFRESH && currentCommands[plane_rpointer] == NULL)) {
@@ -146,7 +143,6 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 				if(busPacket->block == open_row[busPacket->plane] && cfg.OPEN_ROW_ENABLE)
 				{
 					controlCyclesLeft[busPacket->plane] = CYCLES_TO_DATA;
-					cout << "row hit \n";
 					if(cfg.LOGGING)
 					{
 						log->row_hit();
@@ -177,7 +173,6 @@ void Die::receiveFromBuffer(ChannelPacket *busPacket){
 				if(busPacket->block == open_row[busPacket->plane] && cfg.OPEN_ROW_ENABLE)
 				{
 					controlCyclesLeft[busPacket->plane] = CYCLES_TO_DATA;
-					cout << "row hit \n";
 					if(cfg.LOGGING)
 					{
 						log->row_hit();
@@ -351,7 +346,6 @@ bool Die::canDieRefresh()
 		}
 		if(free_count == cfg.PLANES_PER_DIE)
 		{
-			cout << "free count was " << free_count << " so we can refresh \n";
 			return true;
 		}
 		else
@@ -403,7 +397,6 @@ void Die::update(void){
 						// otherwise we wait for the cycle to complete before sending out the data so we do it here
 						if(cfg.OPEN_ROW_ENABLE || CYCLES_TO_DATA == 0)
 						{
-							cout << "open page sending data back \n";
 							currentCommand->busPacketStatus = INBOUND;
 							returnDataPackets.push(currentCommand);
 							planes[currentCommand->plane].readFromData();
@@ -411,21 +404,18 @@ void Die::update(void){
 						}
 						else if(currentCommand->busPacketStatus == RECEIVED)
 						{
-							cout << "closed page removing packet \n";
 							planes[currentCommand->plane].dataGone();
 							delete currentCommand;
 							no_reg_room = false;
 						}
 						else
 						{
-							cout << "no reg room is being triggered \n";
 							// don't null out this command until we've finished it
 							no_reg_room = true;
 						}
 					}
 					else if(cfg.RW_INTERLEAVE_ENABLE && currentCommand->busPacketStatus == RECEIVED && !cfg.OPEN_ROW_ENABLE)
 					{
-						cout << "closed page alternate removing packet \n";
 						planes[currentCommand->plane].dataGone();
 						delete currentCommand;
 						no_reg_room = false;
@@ -522,7 +512,6 @@ void Die::update(void){
 				}
 				else if(bpt == AUTO_REFRESH)
 				{
-					cout << "deleting a refresh command \n";
 					delete currentCommand;
 				}
 
@@ -546,8 +535,6 @@ void Die::update(void){
 				// makes sure that there's room in the registers for this read data
 				if(!cfg.RW_INTERLEAVE_ENABLE || planes[currentCommand->plane].checkCacheReg())
 				{
-					cout << "CYCLES_TO_DATA is " << CYCLES_TO_DATA << "\n";
-					cout << "closed page sending the data back \n";
 					currentCommand->busPacketStatus = INBOUND;
 					returnDataPackets.push(currentCommand);
 					planes[currentCommand->plane].readFromData();
@@ -621,8 +608,6 @@ void Die::update(void){
 			if(channel_pointer->hasChannel(BUFFER, id)){
 				if(dataCyclesLeft == 0)
 				{
-					cout << "die finished sending data for address " << returnDataPackets.front()->virtualAddress << " on cycle " << currentClockCycle << "\n";
-					cout << "package " << returnDataPackets.front()->package << " die " << returnDataPackets.front()->die << " plane " << returnDataPackets.front()->plane << "\n";
 					if(cfg.LOGGING && cfg.PLANE_STATE_LOG)
 					{
 						log->log_plane_state(returnDataPackets.front()->virtualAddress, 
@@ -658,7 +643,6 @@ void Die::update(void){
 				{
 					if(channel_pointer->obtainChannel(id, BUFFER, NULL))
 					{
-						cout << "Die got the channel to send data for address " << returnDataPackets.front()->virtualAddress << " on cycle " << currentClockCycle << "\n";
 						sending = true; // repurposing this flag for use in non-buffered situations
 						if(cfg.DEVICE_DATA_CHANNEL)
 						{

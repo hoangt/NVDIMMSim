@@ -208,7 +208,6 @@ void Controller::returnPowerData(vector<double> idle_energy, vector<double> acce
 }
 
 void Controller::receiveFromChannel(ChannelPacket *busPacket){
-	cout << "controller get bus packet back from channel for address " << busPacket->virtualAddress << " on cycle " << currentClockCycle << "\n";
 	// READ is now done. Log it and call delete
 	if(cfg.LOGGING == true)
 	{
@@ -272,7 +271,6 @@ bool Controller::addPacket(ChannelPacket *p){
 				}
 			}
 		}
-		cout << "received controller packet to address " << p->virtualAddress << " on cycle " << currentClockCycle << "\n";
 		return true;
 	}
 	else
@@ -542,7 +540,6 @@ void Controller::update(void){
 							outgoingPackets[i] = potentialPacket;							
 							if(cfg.REFRESH_ENABLE && potentialPacket->busPacketType == AUTO_REFRESH)
 							{
-								cout << "issued refresh \n";
 								refreshCountdown[i] = REFRESH_CTRL_PERIOD;
 								die_rpointer[i]++;
 								if(die_rpointer[i] >= cfg.DIES_PER_PACKAGE)
@@ -552,9 +549,7 @@ void Controller::update(void){
 							}
 							else if(potentialPacket->busPacketType == DATA && channel_write_pointer[i] == ctrlQueues[i].end())
 							{
-								cout << "channel " << i << " issued a data packet \n";
 								channel_write_pointer[i] = ctrl_it;
-								//cout << "channel write pointer for channel " << i << " is pointed at " << (*channel_write_pointer[i])->virtualAddress << "\n";
 								channel_writing[i] = true;
 							}
 							else if(channel_write_pointer[i] != ctrlQueues[i].end() && potentialPacket->busPacketType == WRITE)
@@ -563,7 +558,6 @@ void Controller::update(void){
 								{
 									ctrlQueues[i].erase(ctrl_it);
 									parentNVDIMM->queuesNotFull();
-									cout << "channel " << i << " is no longer writing \n";
 									channel_writing[i] = false;
 									channel_write_pointer[i] = ctrlQueues[i].end();
 								}
@@ -604,7 +598,6 @@ void Controller::update(void){
 									{
 										// the controller cannot send data to the die faster than the die can receive
 										channelBeatsLeft[i] = divide_params_64b(divide_params_64b((cfg.NV_PAGE_SIZE*8),cfg.DEVICE_DATA_WIDTH) * cfg.DEVICE_CYCLE, cfg.CYCLE_TIME); 
-										//cout << "channel beats left " << channelBeatsLeft[i] << "\n";
 									}
 									else
 									{
@@ -622,7 +615,6 @@ void Controller::update(void){
 									channelBeatsLeft[i] += CHANNEL_TURN_CYCLES;
 								}							
 							}
-							cout << "issued controller packet of type " << potentialPacket->busPacketType << " to address " << potentialPacket->virtualAddress << " on cycle " << currentClockCycle << "\n";
 							done = true;
 						}
 						// couldn't get the channel 
@@ -804,7 +796,6 @@ void Controller::update(void){
 				}
 				if (channel_pointer->hasChannel(CONTROLLER, 0)){
 					channelBeatsLeft[i]--;
-					cout << "we're sending stuff on channel " << i << " and we have " << channelBeatsLeft[i] << " cycles left at " << currentClockCycle << "\n";
 					if (channelBeatsLeft[i] == 0){
 						if(cfg.REFRESH_ENABLE && cfg.refreshLevel == PerChannel && outgoingPackets[i]->busPacketType == AUTO_REFRESH )
 						{
@@ -911,8 +902,6 @@ bool Controller::allDiesRefreshReady(uint64_t package)
 			}
 			else
 			{
-				//cout << "all dies not free \n";
-				//cout << "free count for package " << package << " was " << free_count << "\n";
 				return false;
 			}
 		}
