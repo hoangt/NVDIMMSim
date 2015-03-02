@@ -49,6 +49,14 @@ namespace NVDSim
 	uint64_t i, j;
 	systemID = id;
 
+	if (cDirectory.length() > 0)
+	 {
+		 //ignore the pwd argument if the argument is an absolute path
+		 if (ini[0] != '/')
+		 {
+		 ini = pwd + "/" + ini;
+		 }
+	}
 	cfg = Init::read(ini);
 	
 	// this is where the overprovisioning happens
